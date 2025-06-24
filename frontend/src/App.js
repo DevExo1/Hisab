@@ -9,6 +9,8 @@ import {
   GroupCard,
   FriendCard,
   AddExpenseModal,
+  CreateGroupModal,
+  AddFriendModal,
   ActivityItem
 } from './components';
 
@@ -16,6 +18,8 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
   const [expenses, setExpenses] = useState([]);
   const [groups, setGroups] = useState([]);
   const [friends, setFriends] = useState([]);
@@ -189,11 +193,40 @@ function App() {
   };
 
   const handleAddExpense = (expenseData) => {
+    const participants = expenseData.participants;
+    let youOwe = 0;
+    let youAreOwed = 0;
+
+    // Calculate splits based on split type
+    if (expenseData.splitType === 'equal') {
+      const splitAmount = expenseData.amount / participants.length;
+      if (expenseData.paidBy === 'You') {
+        youAreOwed = splitAmount * (participants.length - 1);
+      } else {
+        youOwe = splitAmount;
+      }
+    } else if (expenseData.splitType === 'percentage') {
+      const yourPercentage = expenseData.customSplits['You'] || 0;
+      const yourAmount = (expenseData.amount * yourPercentage) / 100;
+      if (expenseData.paidBy === 'You') {
+        youAreOwed = expenseData.amount - yourAmount;
+      } else {
+        youOwe = yourAmount;
+      }
+    } else if (expenseData.splitType === 'exact') {
+      const yourAmount = expenseData.customSplits['You'] || 0;
+      if (expenseData.paidBy === 'You') {
+        youAreOwed = expenseData.amount - yourAmount;
+      } else {
+        youOwe = yourAmount;
+      }
+    }
+
     const newExpense = {
       id: expenses.length + 1,
       ...expenseData,
-      youOwe: expenseData.paidBy === 'You' ? 0 : expenseData.amount / (expenseData.participants.length),
-      youAreOwed: expenseData.paidBy === 'You' ? expenseData.amount / (expenseData.participants.length) * (expenseData.participants.length - 1) : 0
+      youOwe,
+      youAreOwed
     };
     setExpenses([newExpense, ...expenses]);
     
@@ -201,9 +234,43 @@ function App() {
     const newActivity = {
       id: activities.length + 1,
       type: 'expense',
-      description: `You added "${expenseData.description}"`,
+      description: `You added "${expenseData.description}"${expenseData.group ? ` in ${expenseData.group}` : ''}`,
       date: new Date().toISOString(),
       amount: expenseData.amount
+    };
+    setActivities([newActivity, ...activities]);
+  };
+
+  const handleCreateGroup = (groupData) => {
+    const newGroup = {
+      id: groups.length + 1,
+      ...groupData
+    };
+    setGroups([newGroup, ...groups]);
+
+    // Add to activity
+    const newActivity = {
+      id: activities.length + 1,
+      type: 'group',
+      description: `You created group "${groupData.name}"`,
+      date: new Date().toISOString()
+    };
+    setActivities([newActivity, ...activities]);
+  };
+
+  const handleAddFriend = (friendData) => {
+    const newFriend = {
+      id: friends.length + 1,
+      ...friendData
+    };
+    setFriends([newFriend, ...friends]);
+
+    // Add to activity
+    const newActivity = {
+      id: activities.length + 1,
+      type: 'friend',
+      description: `You added ${friendData.name} as a friend`,
+      date: new Date().toISOString()
     };
     setActivities([newActivity, ...activities]);
   };
@@ -307,7 +374,10 @@ function App() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Groups</h2>
-        <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+        <button 
+          onClick={() => setShowCreateGroup(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+        >
           Create Group
         </button>
       </div>
@@ -324,7 +394,10 @@ function App() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Friends</h2>
-        <button className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors">
+        <button 
+          onClick={() => setShowAddFriend(true)}
+          className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors"
+        >
           Add Friend
         </button>
       </div>
@@ -398,15 +471,32 @@ function App() {
         {/* Floating Add Button */}
         <button
           onClick={() => setShowAddExpense(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-colors flex items-center justify-center text-xl font-bold hover:scale-105 transform"
+          className="fixed bottom-6 right-6 w-14 h-14 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-colors flex items-center justify-center text-xl font-bold hover:scale-105 transform z-40"
         >
           +
         </button>
 
+        {/* Modals */}
         <AddExpenseModal
           isOpen={showAddExpense}
           onClose={() => setShowAddExpense(false)}
           onSubmit={handleAddExpense}
+          darkMode={darkMode}
+          friends={friends}
+        />
+
+        <CreateGroupModal
+          isOpen={showCreateGroup}
+          onClose={() => setShowCreateGroup(false)}
+          onSubmit={handleCreateGroup}
+          darkMode={darkMode}
+          friends={friends}
+        />
+
+        <AddFriendModal
+          isOpen={showAddFriend}
+          onClose={() => setShowAddFriend(false)}
+          onSubmit={handleAddFriend}
           darkMode={darkMode}
         />
       </div>

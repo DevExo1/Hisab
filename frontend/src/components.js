@@ -191,14 +191,13 @@ export const FriendCard = ({ friend, darkMode }) => {
 };
 
 // Add Expense Modal
-export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
+export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends = [] }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [paidBy, setPaidBy] = useState('You');
   const [splitType, setSplitType] = useState('equal');
-  const [selectedFriends, setSelectedFriends] = useState(['Sarah Johnson']);
-
-  const friends = ['Sarah Johnson', 'Mike Chen', 'Emma Wilson', 'David Brown'];
+  const [selectedFriends, setSelectedFriends] = useState(friends.length > 0 ? [friends[0].name] : []);
+  const [customSplits, setCustomSplits] = useState({});
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -209,22 +208,39 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
         paidBy,
         splitType,
         participants: selectedFriends.concat(paidBy === 'You' ? ['You'] : []),
+        customSplits: splitType === 'equal' ? {} : customSplits,
         date: new Date().toISOString(),
         icon: '🍽️'
       });
       setDescription('');
       setAmount('');
       setPaidBy('You');
-      setSelectedFriends(['Sarah Johnson']);
+      setSelectedFriends(friends.length > 0 ? [friends[0].name] : []);
+      setCustomSplits({});
       onClose();
     }
+  };
+
+  const handleCustomSplitChange = (friendName, value) => {
+    setCustomSplits(prev => ({
+      ...prev,
+      [friendName]: parseFloat(value) || 0
+    }));
+  };
+
+  const getParticipants = () => {
+    const participants = [...selectedFriends];
+    if (!participants.includes('You')) {
+      participants.push('You');
+    }
+    return participants;
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-lg`}>
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add Expense</h2>
           <button
@@ -288,7 +304,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
             >
               <option value="You">You</option>
               {friends.map(friend => (
-                <option key={friend} value={friend}>{friend}</option>
+                <option key={friend.id} value={friend.name}>{friend.name}</option>
               ))}
             </select>
           </div>
@@ -299,20 +315,227 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
             </label>
             <div className="space-y-2">
               {friends.map(friend => (
-                <label key={friend} className="flex items-center space-x-2">
+                <label key={friend.id} className="flex items-center space-x-2">
                   <input
                     type="checkbox"
-                    checked={selectedFriends.includes(friend)}
+                    checked={selectedFriends.includes(friend.name)}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedFriends([...selectedFriends, friend]);
+                        setSelectedFriends([...selectedFriends, friend.name]);
                       } else {
-                        setSelectedFriends(selectedFriends.filter(f => f !== friend));
+                        setSelectedFriends(selectedFriends.filter(f => f !== friend.name));
                       }
                     }}
                     className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                   />
-                  <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{friend}</span>
+                  <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{friend.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Split Type
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setSplitType('equal')}
+                className={`p-2 rounded-lg border text-sm font-medium ${
+                  splitType === 'equal'
+                    ? 'bg-green-600 text-white border-green-600'
+                    : `${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`
+                }`}
+              >
+                Equally
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitType('percentage')}
+                className={`p-2 rounded-lg border text-sm font-medium ${
+                  splitType === 'percentage'
+                    ? 'bg-green-600 text-white border-green-600'
+                    : `${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`
+                }`}
+              >
+                Percentage
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitType('exact')}
+                className={`p-2 rounded-lg border text-sm font-medium ${
+                  splitType === 'exact'
+                    ? 'bg-green-600 text-white border-green-600'
+                    : `${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`
+                }`}
+              >
+                Exact Amount
+              </button>
+            </div>
+          </div>
+
+          {splitType === 'percentage' && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Split Percentages
+              </label>
+              <div className="space-y-2">
+                {getParticipants().map(participant => (
+                  <div key={participant} className="flex items-center space-x-2">
+                    <span className={`w-20 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {participant}:
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      placeholder="0"
+                      value={customSplits[participant] || ''}
+                      onChange={(e) => handleCustomSplitChange(participant, e.target.value)}
+                      className={`flex-1 p-2 rounded border text-sm ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {splitType === 'exact' && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Exact Amounts
+              </label>
+              <div className="space-y-2">
+                {getParticipants().map(participant => (
+                  <div key={participant} className="flex items-center space-x-2">
+                    <span className={`w-20 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {participant}:
+                    </span>
+                    <span className="text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={customSplits[participant] || ''}
+                      onChange={(e) => handleCustomSplitChange(participant, e.target.value)}
+                      className={`flex-1 p-2 rounded border text-sm ${
+                        darkMode 
+                          ? 'bg-gray-700 border-gray-600 text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`flex-1 py-3 px-4 rounded-lg border ${
+                darkMode 
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700' 
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              } font-medium transition-colors`}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+            >
+              Add Expense
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Create Group Modal
+export const CreateGroupModal = ({ isOpen, onClose, onSubmit, darkMode, friends = [] }) => {
+  const [groupName, setGroupName] = useState('');
+  const [selectedFriends, setSelectedFriends] = useState([]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (groupName) {
+      onSubmit({
+        name: groupName,
+        members: ['You', ...selectedFriends],
+        balance: 0
+      });
+      setGroupName('');
+      setSelectedFriends([]);
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md`}>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Create Group</h2>
+          <button
+            onClick={onClose}
+            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Group Name
+            </label>
+            <input
+              type="text"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              placeholder="Enter group name"
+              className={`w-full p-3 rounded-lg border ${
+                darkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              } focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+              required
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Add Members
+            </label>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {friends.map(friend => (
+                <label key={friend.id} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedFriends.includes(friend.name)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedFriends([...selectedFriends, friend.name]);
+                      } else {
+                        setSelectedFriends(selectedFriends.filter(f => f !== friend.name));
+                      }
+                    }}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{friend.name}</span>
                 </label>
               ))}
             </div>
@@ -332,9 +555,105 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+              className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
             >
-              Add Expense
+              Create Group
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Add Friend Modal
+export const AddFriendModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (name && email) {
+      onSubmit({
+        name,
+        email,
+        balance: 0
+      });
+      setName('');
+      setEmail('');
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md`}>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add Friend</h2>
+          <button
+            onClick={onClose}
+            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter friend's name"
+              className={`w-full p-3 rounded-lg border ${
+                darkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              } focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+              required
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter friend's email"
+              className={`w-full p-3 rounded-lg border ${
+                darkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              } focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+              required
+            />
+          </div>
+
+          <div className="flex space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`flex-1 py-3 px-4 rounded-lg border ${
+                darkMode 
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700' 
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              } font-medium transition-colors`}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-3 px-4 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+            >
+              Add Friend
             </button>
           </div>
         </form>
