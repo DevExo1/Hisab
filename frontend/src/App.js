@@ -10,16 +10,22 @@ import {
   FriendCard,
   AddExpenseModal,
   CreateGroupModal,
+  EditGroupModal,
   AddFriendModal,
+  LoginModal,
   ActivityItem
 } from './components';
 
 function App() {
   const [darkMode, setDarkMode] = useState(false);
+  const [currency, setCurrency] = useState('USD');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showEditGroup, setShowEditGroup] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [groups, setGroups] = useState([]);
   const [friends, setFriends] = useState([]);
@@ -126,25 +132,29 @@ function App() {
         id: 1,
         name: 'Sarah Johnson',
         email: 'sarah@example.com',
-        balance: 45.50
+        balance: 45.50,
+        status: 'joined'
       },
       {
         id: 2,
         name: 'Mike Chen',
         email: 'mike@example.com',
-        balance: -112.38
+        balance: -112.38,
+        status: 'joined'
       },
       {
         id: 3,
         name: 'Emma Wilson',
         email: 'emma@example.com',
-        balance: 67.25
+        balance: 67.25,
+        status: 'joined'
       },
       {
         id: 4,
         name: 'David Brown',
         email: 'david@example.com',
-        balance: -22.50
+        balance: -22.50,
+        status: 'invited'
       }
     ]);
 
@@ -258,6 +268,24 @@ function App() {
     setActivities([newActivity, ...activities]);
   };
 
+  const handleEditGroup = (groupData) => {
+    setGroups(groups.map(group => 
+      group.id === groupData.id ? groupData : group
+    ));
+
+    // Add to activity
+    const newActivity = {
+      id: activities.length + 1,
+      type: 'group',
+      description: `You updated group "${groupData.name}"`,
+      date: new Date().toISOString()
+    };
+    setActivities([newActivity, ...activities]);
+    
+    setEditingGroup(null);
+    setShowEditGroup(false);
+  };
+
   const handleAddFriend = (friendData) => {
     const newFriend = {
       id: friends.length + 1,
@@ -269,15 +297,20 @@ function App() {
     const newActivity = {
       id: activities.length + 1,
       type: 'friend',
-      description: `You added ${friendData.name} as a friend`,
+      description: `You invited ${friendData.name} to join Splitwise`,
       date: new Date().toISOString()
     };
     setActivities([newActivity, ...activities]);
   };
 
+  const handleEditGroupClick = (group) => {
+    setEditingGroup(group);
+    setShowEditGroup(true);
+  };
+
   const renderDashboard = () => (
     <div className="space-y-6">
-      <BalanceCard darkMode={darkMode} />
+      <BalanceCard darkMode={darkMode} currency={currency} />
       
       {/* Hero Section */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border overflow-hidden`}>
@@ -296,6 +329,29 @@ function App() {
         </div>
       </div>
 
+      {/* How Friends Login Info */}
+      <div className={`${darkMode ? 'bg-blue-900 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-xl border p-4`}>
+        <h3 className={`font-semibold mb-2 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+          🤝 How Friends Join Splitwise
+        </h3>
+        <div className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'} space-y-2`}>
+          <p><strong>1. Invitation:</strong> When you add a friend, they receive an email invitation</p>
+          <p><strong>2. Account Creation:</strong> They click the link and create their Splitwise account</p>
+          <p><strong>3. Instant Access:</strong> Once joined, they can see shared expenses and add their own</p>
+          <p><strong>4. Real-time Sync:</strong> All balances and expenses sync automatically across accounts</p>
+        </div>
+        <button
+          onClick={() => setShowLogin(true)}
+          className={`mt-3 px-4 py-2 rounded-lg text-sm font-medium ${
+            darkMode 
+              ? 'bg-blue-600 text-white hover:bg-blue-700' 
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          See Login Experience
+        </button>
+      </div>
+
       {/* Recent Expenses */}
       <div>
         <div className="flex justify-between items-center mb-4">
@@ -309,7 +365,7 @@ function App() {
         </div>
         <div className="space-y-3">
           {expenses.slice(0, 3).map(expense => (
-            <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} />
+            <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
           ))}
         </div>
       </div>
@@ -364,7 +420,7 @@ function App() {
 
       <div className="space-y-3">
         {expenses.map(expense => (
-          <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} />
+          <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
         ))}
       </div>
     </div>
@@ -384,7 +440,13 @@ function App() {
 
       <div className="space-y-3">
         {groups.map(group => (
-          <GroupCard key={group.id} group={group} darkMode={darkMode} />
+          <GroupCard 
+            key={group.id} 
+            group={group} 
+            darkMode={darkMode} 
+            currency={currency}
+            onEditGroup={handleEditGroupClick}
+          />
         ))}
       </div>
     </div>
@@ -404,7 +466,7 @@ function App() {
 
       <div className="space-y-3">
         {friends.map(friend => (
-          <FriendCard key={friend.id} friend={friend} darkMode={darkMode} />
+          <FriendCard key={friend.id} friend={friend} darkMode={darkMode} currency={currency} />
         ))}
       </div>
     </div>
@@ -435,7 +497,7 @@ function App() {
 
       <div className="space-y-3">
         {activities.map(activity => (
-          <ActivityItem key={activity.id} activity={activity} darkMode={darkMode} />
+          <ActivityItem key={activity.id} activity={activity} darkMode={darkMode} currency={currency} />
         ))}
       </div>
     </div>
@@ -461,7 +523,14 @@ function App() {
   return (
     <BrowserRouter>
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} transition-colors`}>
-        <Header user={user} darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+        <Header 
+          user={user} 
+          darkMode={darkMode} 
+          toggleDarkMode={toggleDarkMode}
+          currency={currency}
+          setCurrency={setCurrency}
+          onProfileClick={() => setShowLogin(true)}
+        />
         <Navigation activeTab={activeTab} setActiveTab={setActiveTab} darkMode={darkMode} />
         
         <main className="max-w-4xl mx-auto px-4 py-6">
@@ -483,6 +552,7 @@ function App() {
           onSubmit={handleAddExpense}
           darkMode={darkMode}
           friends={friends}
+          currency={currency}
         />
 
         <CreateGroupModal
@@ -493,10 +563,28 @@ function App() {
           friends={friends}
         />
 
+        <EditGroupModal
+          isOpen={showEditGroup}
+          onClose={() => {
+            setShowEditGroup(false);
+            setEditingGroup(null);
+          }}
+          onSubmit={handleEditGroup}
+          darkMode={darkMode}
+          group={editingGroup}
+          friends={friends}
+        />
+
         <AddFriendModal
           isOpen={showAddFriend}
           onClose={() => setShowAddFriend(false)}
           onSubmit={handleAddFriend}
+          darkMode={darkMode}
+        />
+
+        <LoginModal
+          isOpen={showLogin}
+          onClose={() => setShowLogin(false)}
           darkMode={darkMode}
         />
       </div>
