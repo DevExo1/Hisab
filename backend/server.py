@@ -1,75 +1,860 @@
-from fastapi import FastAPI, APIRouter
+import os
+import mysql.connector
+from mysql.connector import pooling
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+import uuid
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import List
-import uuid
-from datetime import datetime
+import bcrypt
+from jose import JWTError, jwt
 
+# --- Configuration and Initialization ---
 
+# Load environment variables
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Security settings
+SECRET_KEY = os.environ.get("SECRET_KEY", "a_default_secret_key_for_development")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Create the main app without a prefix
-app = FastAPI()
+# Database connection pool
+try:
+    db_pool = pooling.MySQLConnectionPool(
+        pool_name="splitwise_pool",
+        pool_size=5,
+        host=os.environ['DB_HOST'],
+        user=os.environ['DB_USER'],
+        password=os.environ['DB_PASSWORD'],
+        database=os.environ['DB_NAME']
+    )
+    logging.info("Successfully created MySQL connection pool.")
+except mysql.connector.Error as err:
+    logging.error(f"Error creating connection pool: {err}")
+    exit()
 
-# Create a router with the /api prefix
+# FastAPI app and router
+app = FastAPI(title="Emergent Splitwise API")
 api_router = APIRouter(prefix="/api")
 
+# --- Database Dependency ---
 
-# Define Models
-class StatusCheck(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+def get_db_connection():
+    """Dependency to get a database connection from the pool."""
+    try:
+        connection = db_pool.get_connection()
+        yield connection
+    finally:
+        if connection.is_connected():
+            connection.close()
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+# --- Security and Authentication ---
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.dict()
-    status_obj = StatusCheck(**status_dict)
-    _ = await db.status_checks.insert_one(status_obj.dict())
-    return status_obj
+def verify_password(plain_password, hashed_password):
+    """Verifies a plain password against a hashed one."""
+    password_bytes = plain_password.encode('utf-8')
+    hash_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_bytes, hash_bytes)
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
+def get_password_hash(password):
+    """Hashes a password."""
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
 
-# Include the router in the main app
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Creates a JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# --- Pydantic Models ---
+
+# User Models
+class UserBase(BaseModel):
+    email: str
+    name: str
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+# Token Models
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+# Group Models
+class GroupBase(BaseModel):
+    name: str
+    currency: Optional[str] = 'USD'
+
+class GroupCreate(GroupBase):
+    member_ids: List[int]
+
+class Group(GroupBase):
+    id: int
+    created_by: int
+    members: List[User] = []
+
+# Expense Models
+class ExpenseBase(BaseModel):
+    description: str
+    amount: float
+    group_id: Optional[int] = None
+    paid_by_user_id: int
+
+class ExpenseCreate(ExpenseBase):
+    # 'equal', 'exact', 'percentage'
+    split_type: str
+    # For 'exact' and 'percentage', maps user_id to value
+    splits: Dict[int, float]
+
+class Expense(ExpenseBase):
+    id: int
+    expense_date: datetime
+
+# Balance Models
+class Balance(BaseModel):
+    user_id: int
+    user_name: str
+    balance: float  # Positive means they are owed, negative means they owe
+
+class GroupBalance(BaseModel):
+    group_id: int
+    group_name: str
+    balances: List[Balance]
+    settlements: List[Dict[str, Any]]  # Simplified debt suggestions
+
+# Settlement Models
+class SettlementCreate(BaseModel):
+    group_id: int
+    payer_id: int  # User who is paying
+    payee_id: int  # User who is receiving
+    amount: float
+    notes: Optional[str] = None
+
+class Settlement(SettlementCreate):
+    id: int
+    settlement_date: datetime
+
+# --- Database CRUD Functions ---
+
+def get_user_by_email(db_conn, email: str):
+    """Fetches a user by their email address."""
+    cursor = db_conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+    cursor.close()
+    return user
+
+def create_db_user(db_conn, user: UserCreate):
+    """Creates a new user in the database."""
+    hashed_password = get_password_hash(user.password)
+    cursor = db_conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO users (full_name, email, hashed_password) VALUES (%s, %s, %s)",
+            (user.name, user.email, hashed_password)
+        )
+        db_conn.commit()
+        user_id = cursor.lastrowid
+        cursor.close()
+        return {"id": user_id, **user.dict()}
+    except mysql.connector.Error as err:
+        cursor.close()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db_conn = Depends(get_db_connection)):
+    """Decodes token to get current user."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    
+    user = get_user_by_email(db_conn, email=token_data.email)
+    if user is None:
+        raise credentials_exception
+    # Map database field names to model field names
+    return User(id=user['id'], email=user['email'], name=user['full_name'])
+
+# --- API Endpoints ---
+
+@api_router.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db_conn = Depends(get_db_connection)):
+    """Provides a token for a valid user."""
+    user = get_user_by_email(db_conn, form_data.username)
+    if not user or not verify_password(form_data.password, user['hashed_password']):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user['email']}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@api_router.post("/users/", response_model=User, status_code=status.HTTP_201_CREATED)
+def create_user(user: UserCreate, db_conn = Depends(get_db_connection)):
+    """Endpoint to create a new user."""
+    db_user = get_user_by_email(db_conn, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    new_user = create_db_user(db_conn, user)
+    return new_user
+
+@api_router.get("/users/me", response_model=User)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """Returns the current authenticated user's details."""
+    return current_user
+
+@api_router.put("/users/me", response_model=User)
+def update_user_profile(update_data: Dict[str, str], current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Update current user's profile (name and/or password)."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Build update query dynamically based on what fields are provided
+        updates = []
+        params = []
+        
+        if 'name' in update_data and update_data['name']:
+            updates.append("full_name = %s")
+            params.append(update_data['name'])
+        
+        if 'password' in update_data and update_data['password']:
+            hashed_password = bcrypt.hashpw(update_data['password'].encode('utf-8'), bcrypt.gensalt())
+            updates.append("password_hash = %s")
+            params.append(hashed_password.decode('utf-8'))
+        
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        
+        # Add user ID to params
+        params.append(current_user.id)
+        
+        # Execute update
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s"
+        cursor.execute(query, params)
+        db_conn.commit()
+        
+        # Fetch updated user
+        cursor.execute("SELECT id, email, full_name as name FROM users WHERE id = %s", (current_user.id,))
+        updated_user = cursor.fetchone()
+        
+        return User(**updated_user)
+        
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.post("/friends/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+def add_friend(friend_email: Dict[str, str], current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Add a friend by email. Creates bidirectional friendship."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        email = friend_email.get('friend_email')
+        if not email:
+            raise HTTPException(status_code=400, detail="friend_email is required")
+        
+        # Check if friend exists
+        friend = get_user_by_email(db_conn, email)
+        if not friend:
+            raise HTTPException(status_code=404, detail="User not registered. Ask your friend to register in the system first.")
+        
+        friend_id = friend['id']
+        
+        # Can't add yourself as friend
+        if friend_id == current_user.id:
+            raise HTTPException(status_code=400, detail="You cannot add yourself as a friend")
+        
+        # Check if friendship already exists
+        cursor.execute("""
+            SELECT id FROM user_friends 
+            WHERE user_id = %s AND friend_id = %s
+        """, (current_user.id, friend_id))
+        
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Already friends with this user")
+        
+        # Create bidirectional friendship
+        cursor.execute("""
+            INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s)
+        """, (current_user.id, friend_id))
+        
+        cursor.execute("""
+            INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s)
+        """, (friend_id, current_user.id))
+        
+        db_conn.commit()
+        
+        return {
+            "message": "Friend added successfully",
+            "friend": {
+                "id": friend['id'],
+                "name": friend['full_name'],
+                "email": friend['email']
+            }
+        }
+        
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.get("/friends/", response_model=List[User])
+def get_friends(current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get list of user's friends."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT u.id, u.email, u.full_name as name
+            FROM users u
+            INNER JOIN user_friends uf ON u.id = uf.friend_id
+            WHERE uf.user_id = %s
+            ORDER BY u.full_name
+        """, (current_user.id,))
+        
+        friends = cursor.fetchall()
+        return [User(**friend) for friend in friends]
+    finally:
+        cursor.close()
+
+@api_router.post("/groups/", response_model=Group, status_code=status.HTTP_201_CREATED)
+def create_group(group: GroupCreate, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Endpoint to create a new group."""
+    cursor = db_conn.cursor()
+    try:
+        # Create the group
+        cursor.execute(
+            "INSERT INTO `groups` (name, created_by, currency) VALUES (%s, %s, %s)",
+            (group.name, current_user.id, group.currency or 'USD')
+        )
+        group_id = cursor.lastrowid
+
+        # Add members, including the creator
+        if current_user.id not in group.member_ids:
+            group.member_ids.append(current_user.id)
+        
+        member_data = [(group_id, user_id) for user_id in group.member_ids]
+        cursor.executemany(
+            "INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)",
+            member_data
+        )
+        db_conn.commit()
+        
+        # Fetch created group details to return
+        # This part is simplified; a real app would fetch member details
+        created_group = {"id": group_id, "name": group.name, "created_by": current_user.id, "members": []}
+        return created_group
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.post("/expenses/", response_model=Expense, status_code=status.HTTP_201_CREATED)
+def create_expense(expense: ExpenseCreate, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Endpoint to add a new expense and split it."""
+    cursor = db_conn.cursor()
+    try:
+        # 1. Create the main expense record
+        expense_date = datetime.utcnow()
+        cursor.execute(
+            "INSERT INTO expenses (description, amount, paid_by, group_id, expense_date) VALUES (%s, %s, %s, %s, %s)",
+            (expense.description, expense.amount, expense.paid_by_user_id, expense.group_id, expense_date)
+        )
+        expense_id = cursor.lastrowid
+
+        # 2. Calculate and insert splits
+        splits_to_insert = []
+        if expense.split_type == 'equal':
+            # For equal split, the splits dict contains user_ids with amounts
+            num_participants = len(expense.splits)
+            if num_participants == 0:
+                raise HTTPException(status_code=400, detail="No participants for equal split.")
+            split_amount = round(expense.amount / num_participants, 2)
+            for user_id in expense.splits:
+                splits_to_insert.append((expense_id, user_id, split_amount))
+
+        elif expense.split_type == 'exact':
+            # For exact split, amounts are specified directly
+            total = sum(expense.splits.values())
+            if abs(total - expense.amount) > 0.01: # Tolerance for float precision
+                raise HTTPException(status_code=400, detail="Exact split amounts do not sum to total expense.")
+            for user_id, amount in expense.splits.items():
+                splits_to_insert.append((expense_id, user_id, amount))
+        
+        elif expense.split_type == 'percentage':
+            # For percentage split, splits dict contains user_ids with percentage values
+            total_percentage = sum(expense.splits.values())
+            if abs(total_percentage - 100.0) > 0.1: # Tolerance for float precision
+                raise HTTPException(status_code=400, detail=f"Percentage split must total 100%, got {total_percentage}%")
+            for user_id, percentage in expense.splits.items():
+                amount = round((expense.amount * percentage) / 100.0, 2)
+                splits_to_insert.append((expense_id, user_id, amount))
+        
+        else:
+            raise HTTPException(status_code=400, detail="Invalid split type specified. Must be 'equal', 'exact', or 'percentage'.")
+
+        cursor.executemany(
+            "INSERT INTO expense_splits (expense_id, user_id, amount) VALUES (%s, %s, %s)",
+            splits_to_insert
+        )
+        
+        db_conn.commit()
+        
+        return {"id": expense_id, "expense_date": expense_date, **expense.dict()}
+
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.get("/groups/", response_model=List[Group])
+def get_user_groups(current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get all groups the current user is a member of."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT g.id, g.name, g.created_by, g.currency
+            FROM groups g
+            INNER JOIN group_members gm ON g.id = gm.group_id
+            WHERE gm.user_id = %s AND gm.is_active = TRUE
+        """, (current_user.id,))
+        groups = cursor.fetchall()
+        
+        # Fetch members for each group
+        result = []
+        for group in groups:
+            cursor.execute("""
+                SELECT u.id, u.email, u.full_name as name
+                FROM users u
+                INNER JOIN group_members gm ON u.id = gm.user_id
+                WHERE gm.group_id = %s AND gm.is_active = TRUE
+            """, (group['id'],))
+            members = cursor.fetchall()
+            group['members'] = [User(**member) for member in members]
+            result.append(Group(**group))
+        
+        return result
+    finally:
+        cursor.close()
+
+@api_router.get("/groups/{group_id}", response_model=Group)
+def get_group(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get details of a specific group."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Check if user is a member
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id = %s AND is_active = TRUE
+        """, (group_id, current_user.id))
+        if cursor.fetchone()['count'] == 0:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        
+        # Get group details
+        cursor.execute("SELECT id, name, created_by, currency FROM groups WHERE id = %s", (group_id,))
+        group = cursor.fetchone()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        # Get members
+        cursor.execute("""
+            SELECT u.id, u.email, u.full_name as name
+            FROM users u
+            INNER JOIN group_members gm ON u.id = gm.user_id
+            WHERE gm.group_id = %s AND gm.is_active = TRUE
+        """, (group_id,))
+        members = cursor.fetchall()
+        group['members'] = [User(**member) for member in members]
+        
+        return Group(**group)
+    finally:
+        cursor.close()
+
+@api_router.put("/groups/{group_id}", response_model=Group)
+def update_group(group_id: int, group_update: GroupCreate, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Update a group's name and members."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Check if user is a member and get group details
+        cursor.execute("""
+            SELECT g.id, g.name, g.created_by FROM groups g
+            INNER JOIN group_members gm ON g.id = gm.group_id
+            WHERE g.id = %s AND gm.user_id = %s AND gm.is_active = TRUE
+        """, (group_id, current_user.id))
+        group = cursor.fetchone()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found or not a member")
+        
+        # Update group name and currency
+        cursor.execute("""
+            UPDATE `groups` SET name = %s, currency = %s WHERE id = %s
+        """, (group_update.name, group_update.currency or 'USD', group_id))
+        
+        # Update members - remove old members not in new list, add new members
+        # Get current members
+        cursor.execute("""
+            SELECT user_id FROM group_members WHERE group_id = %s AND is_active = TRUE
+        """, (group_id,))
+        current_member_ids = [row['user_id'] for row in cursor.fetchall()]
+        
+        # Ensure current user is in the member list
+        if current_user.id not in group_update.member_ids:
+            group_update.member_ids.append(current_user.id)
+        
+        # Members to remove (set is_active to FALSE)
+        members_to_remove = [uid for uid in current_member_ids if uid not in group_update.member_ids]
+        if members_to_remove:
+            placeholders = ','.join(['%s'] * len(members_to_remove))
+            cursor.execute(f"""
+                UPDATE group_members SET is_active = FALSE 
+                WHERE group_id = %s AND user_id IN ({placeholders})
+            """, [group_id] + members_to_remove)
+        
+        # Members to add
+        members_to_add = [uid for uid in group_update.member_ids if uid not in current_member_ids]
+        if members_to_add:
+            # Check if they were previously members (reactivate) or new members (insert)
+            for user_id in members_to_add:
+                cursor.execute("""
+                    SELECT id FROM group_members WHERE group_id = %s AND user_id = %s
+                """, (group_id, user_id))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Reactivate existing membership
+                    cursor.execute("""
+                        UPDATE group_members SET is_active = TRUE 
+                        WHERE group_id = %s AND user_id = %s
+                    """, (group_id, user_id))
+                else:
+                    # Add new member
+                    cursor.execute("""
+                        INSERT INTO group_members (group_id, user_id) VALUES (%s, %s)
+                    """, (group_id, user_id))
+        
+        db_conn.commit()
+        
+        # Fetch and return updated group
+        cursor.execute("SELECT id, name, created_by, currency FROM groups WHERE id = %s", (group_id,))
+        updated_group = cursor.fetchone()
+        
+        # Get updated members
+        cursor.execute("""
+            SELECT u.id, u.email, u.full_name as name
+            FROM users u
+            INNER JOIN group_members gm ON u.id = gm.user_id
+            WHERE gm.group_id = %s AND gm.is_active = TRUE
+        """, (group_id,))
+        members = cursor.fetchall()
+        updated_group['members'] = [User(**member) for member in members]
+        
+        return Group(**updated_group)
+        
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.get("/groups/{group_id}/expenses", response_model=List[Expense])
+def get_group_expenses(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get all expenses for a specific group."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Check if user is a member
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id = %s AND is_active = TRUE
+        """, (group_id, current_user.id))
+        if cursor.fetchone()['count'] == 0:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        
+        # Get expenses
+        cursor.execute("""
+            SELECT id, description, amount, paid_by as paid_by_user_id, 
+                   group_id, expense_date
+            FROM expenses 
+            WHERE group_id = %s 
+            ORDER BY expense_date DESC
+        """, (group_id,))
+        expenses = cursor.fetchall()
+        
+        return [Expense(**expense) for expense in expenses]
+    finally:
+        cursor.close()
+
+@api_router.get("/groups/{group_id}/balances", response_model=GroupBalance)
+def get_group_balances(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Calculate and return balances for all members in a group."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Check if user is a member
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id = %s AND is_active = TRUE
+        """, (group_id, current_user.id))
+        if cursor.fetchone()['count'] == 0:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        
+        # Get group name
+        cursor.execute("SELECT name FROM groups WHERE id = %s", (group_id,))
+        group_result = cursor.fetchone()
+        if not group_result:
+            raise HTTPException(status_code=404, detail="Group not found")
+        group_name = group_result['name']
+        
+        # Calculate balances: what each person paid minus what they owe
+        cursor.execute("""
+            SELECT 
+                u.id as user_id,
+                u.full_name as user_name,
+                COALESCE(paid.total_paid, 0) as total_paid,
+                COALESCE(owed.total_owed, 0) as total_owed
+            FROM users u
+            INNER JOIN group_members gm ON u.id = gm.user_id AND gm.group_id = %s AND gm.is_active = TRUE
+            LEFT JOIN (
+                SELECT paid_by as user_id, SUM(amount) as total_paid
+                FROM expenses
+                WHERE group_id = %s
+                GROUP BY paid_by
+            ) paid ON paid.user_id = u.id
+            LEFT JOIN (
+                SELECT es.user_id, SUM(es.amount) as total_owed
+                FROM expense_splits es
+                INNER JOIN expenses e ON es.expense_id = e.id
+                WHERE e.group_id = %s
+                GROUP BY es.user_id
+            ) owed ON owed.user_id = u.id
+            WHERE gm.group_id = %s AND gm.is_active = TRUE
+        """, (group_id, group_id, group_id, group_id))
+        
+        balance_data = cursor.fetchall()
+        
+        # Apply settlements to adjust balances
+        cursor.execute("""
+            SELECT payer_id, payee_id, amount
+            FROM settlements
+            WHERE group_id = %s
+        """, (group_id,))
+        settlements_data = cursor.fetchall()
+        
+        # Create balance map
+        balance_map = {}
+        for row in balance_data:
+            net_balance = float(row['total_paid']) - float(row['total_owed'])
+            balance_map[row['user_id']] = {
+                'user_id': row['user_id'],
+                'user_name': row['user_name'],
+                'balance': net_balance
+            }
+        
+        # Apply settlements
+        for settlement in settlements_data:
+            payer_id = settlement['payer_id']
+            payee_id = settlement['payee_id']
+            amount = float(settlement['amount'])
+            
+            if payer_id in balance_map:
+                balance_map[payer_id]['balance'] += amount  # Payer paid, so increases their balance
+            if payee_id in balance_map:
+                balance_map[payee_id]['balance'] -= amount  # Payee received, so decreases their balance
+        
+        balances = [Balance(**b) for b in balance_map.values()]
+        
+        # Calculate simplified settlements (greedy algorithm)
+        settlements = calculate_settlements(balances)
+        
+        return GroupBalance(
+            group_id=group_id,
+            group_name=group_name,
+            balances=balances,
+            settlements=settlements
+        )
+    finally:
+        cursor.close()
+
+def calculate_settlements(balances: List[Balance]) -> List[Dict]:
+    """
+    Calculate simplified settlements using a greedy algorithm.
+    Returns a list of suggested payments to settle all debts.
+    """
+    # Separate creditors (owed money) and debtors (owe money)
+    creditors = [(b.user_id, b.user_name, b.balance) for b in balances if b.balance > 0.01]
+    debtors = [(b.user_id, b.user_name, -b.balance) for b in balances if b.balance < -0.01]
+    
+    settlements = []
+    
+    # Sort by amount (largest first) for greedy approach
+    creditors.sort(key=lambda x: x[2], reverse=True)
+    debtors.sort(key=lambda x: x[2], reverse=True)
+    
+    i, j = 0, 0
+    while i < len(creditors) and j < len(debtors):
+        creditor_id, creditor_name, credit_amount = creditors[i]
+        debtor_id, debtor_name, debt_amount = debtors[j]
+        
+        # Determine settlement amount
+        settle_amount = min(credit_amount, debt_amount)
+        
+        settlements.append({
+            "from_user_id": debtor_id,
+            "from_user_name": debtor_name,
+            "to_user_id": creditor_id,
+            "to_user_name": creditor_name,
+            "amount": round(settle_amount, 2)
+        })
+        
+        # Update remaining balances
+        creditors[i] = (creditor_id, creditor_name, credit_amount - settle_amount)
+        debtors[j] = (debtor_id, debtor_name, debt_amount - settle_amount)
+        
+        # Move to next creditor or debtor if fully settled
+        if creditors[i][2] < 0.01:
+            i += 1
+        if debtors[j][2] < 0.01:
+            j += 1
+    
+    return settlements
+
+@api_router.post("/settlements/", response_model=Settlement, status_code=status.HTTP_201_CREATED)
+def record_settlement(settlement: SettlementCreate, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Record a settlement (payment) between two users in a group."""
+    cursor = db_conn.cursor()
+    try:
+        # Verify current user is a member of the group
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id = %s AND is_active = TRUE
+        """, (settlement.group_id, current_user.id))
+        result = cursor.fetchone()
+        if result[0] == 0:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        
+        # Verify payer and payee are members of the group
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id IN (%s, %s) AND is_active = TRUE
+        """, (settlement.group_id, settlement.payer_id, settlement.payee_id))
+        result = cursor.fetchone()
+        if result[0] != 2:
+            raise HTTPException(status_code=400, detail="Payer or payee is not a member of this group")
+        
+        # Insert settlement
+        settlement_date = datetime.utcnow()
+        cursor.execute("""
+            INSERT INTO settlements (group_id, payer_id, payee_id, amount, notes, settlement_date)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (settlement.group_id, settlement.payer_id, settlement.payee_id, 
+              settlement.amount, settlement.notes, settlement_date))
+        
+        settlement_id = cursor.lastrowid
+        db_conn.commit()
+        
+        return Settlement(
+            id=settlement_id,
+            settlement_date=settlement_date,
+            **settlement.dict()
+        )
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.get("/expenses/{expense_id}/splits")
+def get_expense_splits(expense_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get the split details for a specific expense."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Verify user has access to this expense
+        cursor.execute("""
+            SELECT e.id, e.group_id FROM expenses e
+            INNER JOIN group_members gm ON e.group_id = gm.group_id
+            WHERE e.id = %s AND gm.user_id = %s AND gm.is_active = TRUE
+        """, (expense_id, current_user.id))
+        
+        expense = cursor.fetchone()
+        if not expense:
+            raise HTTPException(status_code=404, detail="Expense not found or access denied")
+        
+        # Get splits
+        cursor.execute("""
+            SELECT es.user_id, u.full_name as user_name, es.amount
+            FROM expense_splits es
+            INNER JOIN users u ON es.user_id = u.id
+            WHERE es.expense_id = %s
+        """, (expense_id,))
+        
+        splits = cursor.fetchall()
+        return {"expense_id": expense_id, "splits": splits}
+    finally:
+        cursor.close()
+
+# --- App Initialization ---
+
 app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"], # Allow all origins for development
     allow_credentials=True,
-    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Close the database connection pool on application shutdown."""
+    logging.info("Closing MySQL connection pool.")
+    # The pool itself doesn't have a close method in this version,
+    # connections are closed as they are returned.
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

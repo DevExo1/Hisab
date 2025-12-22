@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l \"C:\\Users\\PC\\OneDrive - Solutions Consultant Pvt Ltd\\Dev Work\\EmergentSplitwise\\frontend\\src\"/*.{js,jsx,css})"
+    ]
+  }
+}

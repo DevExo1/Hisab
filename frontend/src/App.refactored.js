@@ -19,7 +19,6 @@ import {
   AddFriendModal,
   LoginModal
 } from './components/modals';
-import { ProfileSettingsModal } from './components/modals/ProfileSettingsModal';
 
 // API functions
 import { groupAPI, expenseAPI } from './api';
@@ -34,7 +33,6 @@ function App() {
   const [showEditGroup, setShowEditGroup] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const [selectedGroupForExpense, setSelectedGroupForExpense] = useState(null);
   const [selectedGroupView, setSelectedGroupView] = useState(null);
@@ -82,15 +80,15 @@ function App() {
       const splits = {};
 
       if (expenseData.splitType === 'equal') {
-        // For equal split, backend expects user IDs with any value (backend calculates amounts)
+        // For equal split, all participants get equal share
         expenseData.participants.forEach(participantName => {
           const member = group.members.find(m => m.name === participantName || (participantName === 'You' && m.id === user.id));
           if (member) {
-            splits[member.id] = 0; // Value doesn't matter for equal split
+            splits[member.id] = expenseData.amount / expenseData.participants.length;
           }
         });
       } else if (expenseData.splitType === 'exact') {
-        // For exact split, send the exact amounts
+        // For exact split, use custom amounts
         Object.entries(expenseData.customSplits).forEach(([name, amount]) => {
           const member = group.members.find(m => m.name === name || (name === 'You' && m.id === user.id));
           if (member) {
@@ -98,11 +96,11 @@ function App() {
           }
         });
       } else if (expenseData.splitType === 'percentage') {
-        // For percentage split, send the PERCENTAGE values (backend calculates amounts)
+        // For percentage split, calculate amounts from percentages
         Object.entries(expenseData.customSplits).forEach(([name, percentage]) => {
           const member = group.members.find(m => m.name === name || (name === 'You' && m.id === user.id));
           if (member) {
-            splits[member.id] = percentage; // Send percentage, not calculated amount
+            splits[member.id] = (expenseData.amount * percentage) / 100;
           }
         });
       }
@@ -144,8 +142,8 @@ function App() {
         }
       });
 
-      // Create group via API with currency
-      await groupAPI.createGroup(groupData.name, memberIds, groupData.currency || 'USD');
+      // Create group via API
+      await groupAPI.createGroup(groupData.name, memberIds);
 
       // Reload data
       await loadAllData();
@@ -158,76 +156,22 @@ function App() {
   };
 
   /**
-   * Handle editing a group via API
+   * Handle editing a group (currently just closes modal - API endpoint not implemented yet)
    */
-  const handleEditGroup = async (groupData) => {
-    try {
-      console.log('handleEditGroup called with:', groupData);
-      console.log('Available friends:', friends);
-      console.log('Current user:', user);
-      
-      // Get member IDs from names
-      const memberIds = [user.id]; // Always include current user
-
-      groupData.members.forEach(memberName => {
-        if (memberName !== 'You') {
-          const friend = friends.find(f => f.name === memberName);
-          if (friend) {
-            memberIds.push(friend.id);
-          } else {
-            console.warn(`Friend not found: ${memberName}`);
-          }
-        }
-      });
-
-      console.log('Member IDs to send:', memberIds);
-
-      // Update group via API with currency
-      const response = await groupAPI.updateGroup(groupData.id, groupData.name, memberIds, groupData.currency || 'USD');
-      console.log('Update response:', response);
-
-      // Reload data
-      await loadAllData();
-
-      alert('Group updated successfully!');
-      setEditingGroup(null);
-      setShowEditGroup(false);
-    } catch (error) {
-      console.error('Failed to update group:', error);
-      console.error('Error details:', error.response?.data || error.message);
-      alert(`Failed to update group: ${error.response?.data?.detail || error.message}`);
-    }
+  const handleEditGroup = (groupData) => {
+    // TODO: Implement group edit API endpoint
+    alert('Group editing will be available soon!');
+    setEditingGroup(null);
+    setShowEditGroup(false);
   };
 
   /**
    * Handle adding a friend (currently not needed as friends come from group members)
    */
-  const handleAddFriend = async (friendData) => {
-    try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/friends/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          friend_email: friendData.email
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Friend added successfully! ${result.friend.name} is now your friend.`);
-        // Reload data to refresh friends list
-        await loadAllData();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to add friend');
-      }
-    } catch (error) {
-      console.error('Failed to add friend:', error);
-      throw error; // Re-throw so modal can display the error
-    }
+  const handleAddFriend = (friendData) => {
+    // Friends are automatically added when they join groups
+    // This is more of a "register new user" feature
+    alert('Friends are automatically added when you create groups together!');
   };
 
   const handleEditGroupClick = (group) => {
@@ -246,43 +190,6 @@ function App() {
 
   const handleBackFromGroupDetails = () => {
     setSelectedGroupView(null);
-  };
-
-  const handleLogout = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      logout();
-      setActiveTab('dashboard');
-    }
-  };
-
-  const handleProfileSettings = () => {
-    setShowProfileSettings(true);
-  };
-
-  const handleUpdateProfile = async (updateData) => {
-    try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/users/me`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (response.ok) {
-        const updatedUser = await response.json();
-        alert('Profile updated successfully!');
-        // Reload data to refresh user info
-        await loadAllData();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to update profile');
-      }
-    } catch (error) {
-      console.error('Failed to update profile:', error);
-      throw error; // Re-throw so modal can display the error
-    }
   };
 
   const renderContent = () => {
@@ -378,8 +285,7 @@ function App() {
           toggleDarkMode={toggleDarkMode}
           currency={currency}
           setCurrency={setCurrency}
-          onProfileClick={handleProfileSettings}
-          onLogout={handleLogout}
+          onProfileClick={() => setShowLogin(true)}
         />
         <Navigation
           activeTab={activeTab}
@@ -449,14 +355,6 @@ function App() {
           onClose={() => setShowLogin(false)}
           darkMode={darkMode}
           onLogin={login}
-        />
-
-        <ProfileSettingsModal
-          isOpen={showProfileSettings}
-          onClose={() => setShowProfileSettings(false)}
-          onSubmit={handleUpdateProfile}
-          darkMode={darkMode}
-          user={user}
         />
       </div>
     </BrowserRouter>

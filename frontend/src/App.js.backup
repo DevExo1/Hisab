@@ -1,0 +1,873 @@
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import './App.css';
+import {
+  Header,
+  Navigation,
+  BalanceCard,
+  ExpenseCard,
+  GroupCard,
+  FriendCard,
+  AddExpenseModal,
+  CreateGroupModal,
+  EditGroupModal,
+  AddFriendModal,
+  LoginModal,
+  ActivityItem
+} from './components';
+import { 
+  authAPI, 
+  userAPI, 
+  groupAPI, 
+  expenseAPI, 
+  settlementAPI,
+  calculateOverallBalance,
+  formatExpenseForDisplay 
+} from './api';
+
+function App() {
+  // UI State
+  const [darkMode, setDarkMode] = useState(false);
+  const [currency, setCurrency] = useState('USD');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showEditGroup, setShowEditGroup] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showLogin, setShowLogin] = useState(!authAPI.isAuthenticated());
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [selectedGroupForExpense, setSelectedGroupForExpense] = useState(null);
+  const [selectedGroupView, setSelectedGroupView] = useState(null);
+  
+  // Data State
+  const [user, setUser] = useState(null);
+  const [expenses, setExpenses] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [balances, setBalances] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Load data from API when user is authenticated
+  useEffect(() => {
+    if (authAPI.isAuthenticated() && !user) {
+      loadUserData();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadAllData();
+    }
+  }, [user]);
+
+  /**
+   * Load current user data from API
+   */
+  const loadUserData = async () => {
+    try {
+      setLoading(true);
+      const userData = await userAPI.getCurrentUser();
+      console.log('User data loaded:', userData);
+      setUser(userData);
+      setShowLogin(false);
+    } catch (error) {
+      console.error('Failed to load user data:', error);
+      setShowLogin(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Load all data (groups, expenses, balances)
+   */
+  const loadAllData = async () => {
+    try {
+      console.log('loadAllData started');
+      setLoading(true);
+      const loadedGroups = await loadGroups();
+      console.log('Groups loaded, now loading expenses');
+      await loadExpenses(loadedGroups);
+      console.log('All data loaded successfully');
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      setError('Failed to load data. Please refresh the page.');
+    } finally {
+      console.log('Setting loading to false');
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Load groups from API
+   */
+  const loadGroups = async () => {
+    try {
+      console.log('Loading groups, current user:', user);
+      const groupsData = await groupAPI.getGroups();
+      console.log('Groups loaded:', groupsData);
+
+      // Load balances for each group
+      const groupsWithBalances = await Promise.all(
+        groupsData.map(async (group) => {
+          try {
+            const balanceData = await groupAPI.getGroupBalances(group.id);
+
+            // Find current user's balance
+            const userBalance = balanceData.balances.find(
+              b => b.user_id === user?.id
+            );
+
+            return {
+              ...group,
+              balance: userBalance?.balance || 0,
+              balanceData: balanceData,
+              currency: currency,
+            };
+          } catch (error) {
+            console.error(`Failed to load balance for group ${group.id}:`, error);
+            return {
+              ...group,
+              balance: 0,
+              currency: currency,
+            };
+          }
+        })
+      );
+
+      setGroups(groupsWithBalances);
+
+      // Extract friends from group members
+      const allMembers = new Map();
+      groupsWithBalances.forEach(group => {
+        group.members?.forEach(member => {
+          if (member.id !== user?.id) {
+            if (!allMembers.has(member.id)) {
+              allMembers.set(member.id, {
+                id: member.id,
+                name: member.name,
+                email: member.email,
+                balance: 0,
+                status: 'joined'
+              });
+            }
+          }
+        });
+      });
+
+      // Calculate balance with each friend across all groups
+      groupsWithBalances.forEach(group => {
+        if (group.balanceData) {
+          group.balanceData.balances.forEach(balance => {
+            if (balance.user_id !== user?.id && allMembers.has(balance.user_id)) {
+              const friend = allMembers.get(balance.user_id);
+              // User's balance vs this person (positive = they owe you, negative = you owe them)
+              friend.balance -= balance.balance;
+            }
+          });
+        }
+      });
+
+      setFriends(Array.from(allMembers.values()));
+
+      // Return the loaded groups so they can be used immediately
+      return groupsWithBalances;
+
+    } catch (error) {
+      console.error('Failed to load groups:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Load expenses from all groups
+   * @param {Array} groupsToLoad - Optional array of groups to load expenses from (uses state if not provided)
+   */
+  const loadExpenses = async (groupsToLoad = null) => {
+    try {
+      const groupsArray = groupsToLoad || groups;
+      console.log('Loading expenses, user:', user, 'groups:', groupsArray.length);
+      if (!user || groupsArray.length === 0) {
+        console.log('Skipping expenses load - no user or groups');
+        return;
+      }
+
+      const allExpenses = [];
+
+      for (const group of groupsArray) {
+        try {
+          const groupExpenses = await groupAPI.getGroupExpenses(group.id);
+          const formattedExpenses = groupExpenses.map(expense => {
+            // Get split info to calculate youOwe/youAreOwed
+            const paidByCurrentUser = expense.paid_by_user_id === user.id;
+
+            return {
+              id: expense.id,
+              description: expense.description,
+              amount: expense.amount,
+              paidBy: paidByCurrentUser ? 'You' : getMemberName(expense.paid_by_user_id, group),
+              date: new Date(expense.expense_date).toISOString().split('T')[0],
+              icon: getExpenseIcon(expense.description),
+              group: group.name,
+              groupId: group.id,
+              paidByUserId: expense.paid_by_user_id,
+              youOwe: 0, // Will be calculated from splits
+              youAreOwed: 0,
+            };
+          });
+
+          allExpenses.push(...formattedExpenses);
+        } catch (error) {
+          console.error(`Failed to load expenses for group ${group.id}:`, error);
+        }
+      }
+
+      // Sort by date (newest first)
+      allExpenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      setExpenses(allExpenses);
+    } catch (error) {
+      console.error('Failed to load expenses:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Get member name by ID from groups
+   */
+  const getMemberName = (userId, group) => {
+    const member = group.members?.find(m => m.id === userId);
+    return member ? member.name : 'Unknown';
+  };
+
+  /**
+   * Get emoji icon based on expense description
+   */
+  const getExpenseIcon = (description) => {
+    const lowerDesc = description.toLowerCase();
+    if (lowerDesc.includes('dinner') || lowerDesc.includes('restaurant') || lowerDesc.includes('food')) return '🍽️';
+    if (lowerDesc.includes('uber') || lowerDesc.includes('taxi') || lowerDesc.includes('transport')) return '🚗';
+    if (lowerDesc.includes('grocery') || lowerDesc.includes('groceries')) return '🛒';
+    if (lowerDesc.includes('movie') || lowerDesc.includes('cinema')) return '🎬';
+    if (lowerDesc.includes('coffee') || lowerDesc.includes('cafe')) return '☕';
+    if (lowerDesc.includes('rent')) return '🏠';
+    if (lowerDesc.includes('electricity') || lowerDesc.includes('bill') || lowerDesc.includes('utility')) return '💡';
+    if (lowerDesc.includes('flight') || lowerDesc.includes('ticket')) return '✈️';
+    return '💰';
+  };
+
+  // No mock data initialization - all data comes from API
+
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
+
+  /**
+   * Handle user login
+   */
+  const handleLogin = async (email, password) => {
+    try {
+      console.log('Login attempt:', email);
+      setLoading(true);
+      setError(null);
+      
+      await authAPI.login(email, password);
+      console.log('Login successful, loading user data');
+      await loadUserData();
+      console.log('User data loaded, login complete');
+      
+      return true;
+    } catch (error) {
+      console.error('Login failed:', error);
+      setError('Login failed. Please check your credentials.');
+      return false;
+    } finally {
+      console.log('handleLogin finally block - setting loading to false');
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Handle user logout
+   */
+  const handleLogout = () => {
+    authAPI.logout();
+    setUser(null);
+    setGroups([]);
+    setExpenses([]);
+    setFriends([]);
+    setActivities([]);
+    setShowLogin(true);
+  };
+
+  /**
+   * Handle adding a new expense via API
+   */
+  const handleAddExpense = async (expenseData) => {
+    try {
+      setLoading(true);
+      
+      // Find the group by name to get ID
+      const group = groups.find(g => g.name === expenseData.groupName);
+      if (!group) {
+        alert('Group not found');
+        return;
+      }
+
+      // Get payer user ID
+      const payerId = expenseData.paidBy === 'You' ? user.id : 
+        group.members.find(m => m.name === expenseData.paidBy)?.id;
+
+      if (!payerId) {
+        alert('Payer not found');
+        return;
+      }
+
+      // Build splits object based on split type
+      const splits = {};
+      
+      if (expenseData.splitType === 'equal') {
+        // For equal split, all participants get equal share
+        expenseData.participants.forEach(participantName => {
+          const member = group.members.find(m => m.name === participantName || (participantName === 'You' && m.id === user.id));
+          if (member) {
+            splits[member.id] = expenseData.amount / expenseData.participants.length;
+          }
+        });
+      } else if (expenseData.splitType === 'exact') {
+        // For exact split, use custom amounts
+        Object.entries(expenseData.customSplits).forEach(([name, amount]) => {
+          const member = group.members.find(m => m.name === name || (name === 'You' && m.id === user.id));
+          if (member) {
+            splits[member.id] = amount;
+          }
+        });
+      } else if (expenseData.splitType === 'percentage') {
+        // For percentage split, calculate amounts from percentages
+        Object.entries(expenseData.customSplits).forEach(([name, percentage]) => {
+          const member = group.members.find(m => m.name === name || (name === 'You' && m.id === user.id));
+          if (member) {
+            splits[member.id] = (expenseData.amount * percentage) / 100;
+          }
+        });
+      }
+
+      // Create expense via API
+      await expenseAPI.createExpense({
+        description: expenseData.description,
+        amount: expenseData.amount,
+        groupId: group.id,
+        paidByUserId: payerId,
+        splitType: expenseData.splitType,
+        splits: splits,
+      });
+
+      // Reload data
+      await loadAllData();
+      
+      alert('Expense added successfully!');
+    } catch (error) {
+      console.error('Failed to add expense:', error);
+      alert('Failed to add expense. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Handle creating a new group via API
+   */
+  const handleCreateGroup = async (groupData) => {
+    try {
+      setLoading(true);
+      
+      // Get member IDs from names
+      const memberIds = [user.id]; // Always include current user
+      
+      groupData.members.forEach(memberName => {
+        if (memberName !== 'You') {
+          const friend = friends.find(f => f.name === memberName);
+          if (friend) {
+            memberIds.push(friend.id);
+          }
+        }
+      });
+
+      // Create group via API
+      await groupAPI.createGroup(groupData.name, memberIds);
+
+      // Reload data
+      await loadAllData();
+      
+      alert('Group created successfully!');
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      alert('Failed to create group. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Handle editing a group (currently just closes modal - API endpoint not implemented yet)
+   */
+  const handleEditGroup = (groupData) => {
+    // TODO: Implement group edit API endpoint
+    alert('Group editing will be available soon!');
+    setEditingGroup(null);
+    setShowEditGroup(false);
+  };
+
+  /**
+   * Handle adding a friend (currently not needed as friends come from group members)
+   */
+  const handleAddFriend = (friendData) => {
+    // Friends are automatically added when they join groups
+    // This is more of a "register new user" feature
+    alert('Friends are automatically added when you create groups together!');
+  };
+
+  const handleEditGroupClick = (group) => {
+    setEditingGroup(group);
+    setShowEditGroup(true);
+  };
+
+  const handleAddExpenseToGroup = (group) => {
+    setSelectedGroupForExpense(group);
+    setShowAddExpense(true);
+  };
+
+  const handleViewGroupDetails = (group) => {
+    setSelectedGroupView(group);
+  };
+
+  const handleBackFromGroupDetails = () => {
+    setSelectedGroupView(null);
+  };
+
+  const renderDashboard = () => {
+    // Calculate overall balance from groups
+    const overallBalance = calculateOverallBalance(groups);
+    
+    return (
+    <div className="space-y-6">
+      <BalanceCard 
+        darkMode={darkMode} 
+        currency={currency}
+        youOwe={overallBalance.youOwe}
+        youAreOwed={overallBalance.youAreOwed}
+      />
+      
+      {/* Hero Section */}
+      <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'glass-card'} rounded-2xl border overflow-hidden shadow-xl`}>
+        <div className="relative h-48 gradient-teal">
+          <img 
+            src="https://images.unsplash.com/photo-1593079323074-f1d77349c998" 
+            alt="Expense sharing concept"
+            className="w-full h-full object-cover opacity-20"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center text-white px-4">
+              <h2 className="text-3xl font-bold heading-font mb-3">Split expenses beautifully</h2>
+              <p className="text-lg opacity-95 font-medium">Keep track of shared expenses and balances with friends</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* How Friends Login Info */}
+      <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-50 border-sky-200'} rounded-2xl border p-6 shadow-lg hover-lift`}>
+        <h3 className={`font-bold text-lg heading-font mb-3 ${darkMode ? 'text-sky-200' : 'text-sky-800'}`}>
+          🤝 How Friends Join EmergentSplit
+        </h3>
+        <div className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'} space-y-2.5`}>
+          <p><strong>1. Invitation:</strong> When you add a friend, they receive an email invitation</p>
+          <p><strong>2. Account Creation:</strong> They click the link and create their Splitwise account</p>
+          <p><strong>3. Instant Access:</strong> Once joined, they can see shared expenses and add their own</p>
+          <p><strong>4. Real-time Sync:</strong> All balances and expenses sync automatically across accounts</p>
+        </div>
+        <button
+          onClick={() => setShowLogin(true)}
+          className="mt-4 px-5 py-2.5 gradient-teal text-white rounded-xl text-sm font-semibold heading-font shadow-md hover:shadow-lg transition-all hover:scale-105"
+        >
+          See Login Experience
+        </button>
+      </div>
+
+      {/* Recent Expenses */}
+      <div>
+        <div className="flex justify-between items-center mb-5">
+          <h2 className={`text-2xl font-bold heading-font ${darkMode ? 'text-white' : 'text-slate-900'}`}>Recent Expenses</h2>
+          <button
+            onClick={() => setActiveTab('expenses')}
+            className="text-gradient-teal hover:opacity-80 font-semibold text-sm transition-opacity"
+          >
+            View all →
+          </button>
+        </div>
+        <div className="space-y-3">
+          {expenses.slice(0, 3).map(expense => (
+            <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+  };
+
+  const renderExpenses = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>All Expenses</h2>
+        <button
+          onClick={() => setShowAddExpense(true)}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+        >
+          <span>+</span>
+          <span>Add Expense</span>
+        </button>
+      </div>
+
+      {/* Expense Management Visual */}
+      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border overflow-hidden`}>
+        <div className="relative h-32 bg-gradient-to-r from-blue-500 to-purple-600">
+          <img 
+            src="https://images.pexels.com/photos/6289058/pexels-photo-6289058.jpeg" 
+            alt="Financial management"
+            className="w-full h-full object-cover opacity-30"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center text-white">
+              <h3 className="text-lg font-semibold">Expense Management</h3>
+              <p className="text-sm opacity-90">Track and split your expenses efficiently</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {expenses.length === 0 ? (
+          <div className={`${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600'} rounded-xl p-8 text-center border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <p className="text-lg mb-2">No expenses yet</p>
+            <p className="text-sm opacity-75">Click the "Add Expense" button to create your first expense</p>
+          </div>
+        ) : (
+          expenses.map(expense => (
+            <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const renderGroupDetails = () => {
+    if (!selectedGroupView) return null;
+
+    const groupExpenses = expenses.filter(exp => exp.groupId === selectedGroupView.id);
+    
+    return (
+      <div className="space-y-6">
+        {/* Header with back button */}
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleBackFromGroupDetails}
+            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition-colors`}
+          >
+            <span className="text-xl">←</span>
+          </button>
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {selectedGroupView.name}
+          </h2>
+        </div>
+
+        {/* Group Info Card */}
+        <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} rounded-xl border p-6`}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Group Details
+              </h3>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1`}>
+                {selectedGroupView.members.length} members • {selectedGroupView.currency || currency}
+              </p>
+            </div>
+            <button
+              onClick={() => handleEditGroupClick(selectedGroupView)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            >
+              <span>✏️</span>
+              <span>Edit Group</span>
+            </button>
+          </div>
+
+          {/* Members List */}
+          <div>
+            <h4 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Members
+            </h4>
+            <div className="grid grid-cols-2 gap-2">
+              {selectedGroupView.members.map((member, idx) => (
+                <div
+                  key={idx}
+                  className={`flex items-center space-x-2 p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-600' : 'bg-gray-200'}`}>
+                    <span className="text-sm font-semibold">{member.name?.charAt(0) || '?'}</span>
+                  </div>
+                  <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    {member.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Balance Summary */}
+          <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex justify-between items-center">
+              <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Your Balance
+              </span>
+              <span className={`text-lg font-bold ${selectedGroupView.balance > 0 ? 'text-gradient-teal' : selectedGroupView.balance < 0 ? 'text-gradient-coral' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                {selectedGroupView.balance > 0 ? '+' : ''}{formatCurrency(selectedGroupView.balance, selectedGroupView.currency || currency)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Expenses Section */}
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              Group Expenses
+            </h3>
+            <button
+              onClick={() => handleAddExpenseToGroup(selectedGroupView)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+            >
+              <span>+</span>
+              <span>Add Expense</span>
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {groupExpenses.length === 0 ? (
+              <div className={`${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600'} rounded-xl p-8 text-center border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <p className="text-lg mb-2">No expenses in this group yet</p>
+                <p className="text-sm opacity-75">Click "Add Expense" to create the first expense</p>
+              </div>
+            ) : (
+              groupExpenses.map(expense => (
+                <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderGroups = () => {
+    // If a group is selected, show group details
+    if (selectedGroupView) {
+      return renderGroupDetails();
+    }
+
+    // Otherwise show groups list
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Groups</h2>
+          <button 
+            onClick={() => setShowCreateGroup(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Create Group
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {groups.map(group => (
+            <GroupCard 
+              key={group.id} 
+              group={group} 
+              darkMode={darkMode} 
+              currency={currency}
+              onEditGroup={handleEditGroupClick}
+              onAddExpense={handleAddExpenseToGroup}
+              onViewDetails={handleViewGroupDetails}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderFriends = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Friends</h2>
+        <button 
+          onClick={() => setShowAddFriend(true)}
+          className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors"
+        >
+          Add Friend
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {friends.map(friend => (
+          <FriendCard key={friend.id} friend={friend} darkMode={darkMode} currency={currency} />
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderActivity = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Recent Activity</h2>
+      </div>
+
+      {/* Digital Payment Visual */}
+      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border overflow-hidden`}>
+        <div className="relative h-32 bg-gradient-to-r from-orange-500 to-red-600">
+          <img 
+            src="https://images.pexels.com/photos/5980887/pexels-photo-5980887.jpeg" 
+            alt="Digital payments"
+            className="w-full h-full object-cover opacity-30"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center text-white">
+              <h3 className="text-lg font-semibold">Payment Tracking</h3>
+              <p className="text-sm opacity-90">Monitor all your transactions and settlements</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {activities.map(activity => (
+          <ActivityItem key={activity.id} activity={activity} darkMode={darkMode} currency={currency} />
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return renderDashboard();
+      case 'expenses':
+        return renderExpenses();
+      case 'groups':
+        return renderGroups();
+      case 'friends':
+        return renderFriends();
+      case 'activity':
+        return renderActivity();
+      default:
+        return renderDashboard();
+    }
+  };
+
+  // Show login modal if not authenticated
+  if (!user && showLogin) {
+    return (
+      <BrowserRouter>
+        <div className={`min-h-screen ${darkMode ? 'bg-slate-900' : 'bg-slate-50'} transition-colors flex items-center justify-center`}>
+          <LoginModal
+            isOpen={showLogin}
+            onClose={() => {}} // Don't allow closing without login
+            darkMode={darkMode}
+            onLogin={handleLogin}
+          />
+        </div>
+      </BrowserRouter>
+    );
+  }
+
+  return (
+    <BrowserRouter>
+      <div className={`min-h-screen ${darkMode ? 'bg-slate-900' : 'bg-slate-50'} transition-colors`}>
+        <Header 
+          user={user} 
+          darkMode={darkMode} 
+          toggleDarkMode={toggleDarkMode}
+          currency={currency}
+          setCurrency={setCurrency}
+          onProfileClick={() => setShowLogin(true)}
+          onLogout={handleLogout}
+        />
+        <Navigation 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          darkMode={darkMode} 
+          groupsCount={groups.length}
+          friendsCount={friends.length}
+        />
+        
+        <main className="max-w-4xl mx-auto px-4 py-6">
+          {renderContent()}
+        </main>
+
+        {/* Floating Add Button */}
+        <button
+          onClick={() => setShowAddExpense(true)}
+          className="fixed bottom-6 right-6 w-16 h-16 gradient-teal text-white rounded-2xl shadow-2xl hover:shadow-3xl transition-all flex items-center justify-center text-3xl font-bold hover:scale-110 transform z-40 float-animation"
+        >
+          +
+        </button>
+
+        {/* Modals */}
+        <AddExpenseModal
+          isOpen={showAddExpense}
+          onClose={() => {
+            setShowAddExpense(false);
+            setSelectedGroupForExpense(null);
+          }}
+          onSubmit={handleAddExpense}
+          darkMode={darkMode}
+          friends={friends}
+          currency={currency}
+          groups={groups}
+          selectedGroup={selectedGroupForExpense}
+        />
+
+        <CreateGroupModal
+          isOpen={showCreateGroup}
+          onClose={() => setShowCreateGroup(false)}
+          onSubmit={handleCreateGroup}
+          darkMode={darkMode}
+          friends={friends}
+          defaultCurrency={currency}
+        />
+
+        <EditGroupModal
+          isOpen={showEditGroup}
+          onClose={() => {
+            setShowEditGroup(false);
+            setEditingGroup(null);
+          }}
+          onSubmit={handleEditGroup}
+          darkMode={darkMode}
+          group={editingGroup}
+          friends={friends}
+        />
+
+        <AddFriendModal
+          isOpen={showAddFriend}
+          onClose={() => setShowAddFriend(false)}
+          onSubmit={handleAddFriend}
+          darkMode={darkMode}
+        />
+
+      </div>
+    </BrowserRouter>
+  );
+}
+
+export default App;
