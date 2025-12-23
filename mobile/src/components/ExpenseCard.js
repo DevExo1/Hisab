@@ -5,20 +5,21 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { formatCurrency } from '../utils/currency';
 
 const getExpenseIcon = (description) => {
   const lowerDesc = description.toLowerCase();
-  if (lowerDesc.includes('dinner') || lowerDesc.includes('restaurant') || lowerDesc.includes('food')) return '🍽️';
-  if (lowerDesc.includes('uber') || lowerDesc.includes('taxi') || lowerDesc.includes('transport')) return '🚗';
-  if (lowerDesc.includes('grocery') || lowerDesc.includes('groceries')) return '🛒';
-  if (lowerDesc.includes('movie') || lowerDesc.includes('cinema')) return '🎬';
-  if (lowerDesc.includes('coffee') || lowerDesc.includes('cafe')) return '☕';
-  if (lowerDesc.includes('rent')) return '🏠';
-  if (lowerDesc.includes('electricity') || lowerDesc.includes('bill') || lowerDesc.includes('utility')) return '💡';
-  if (lowerDesc.includes('flight') || lowerDesc.includes('ticket')) return '✈️';
-  return '💰';
+  if (lowerDesc.includes('dinner') || lowerDesc.includes('restaurant') || lowerDesc.includes('food')) return 'restaurant-sharp';
+  if (lowerDesc.includes('uber') || lowerDesc.includes('taxi') || lowerDesc.includes('transport')) return 'car-sharp';
+  if (lowerDesc.includes('grocery') || lowerDesc.includes('groceries')) return 'cart-sharp';
+  if (lowerDesc.includes('movie') || lowerDesc.includes('cinema')) return 'film-sharp';
+  if (lowerDesc.includes('coffee') || lowerDesc.includes('cafe')) return 'cafe-sharp';
+  if (lowerDesc.includes('rent')) return 'home-sharp';
+  if (lowerDesc.includes('electricity') || lowerDesc.includes('bill') || lowerDesc.includes('utility')) return 'flash-sharp';
+  if (lowerDesc.includes('flight') || lowerDesc.includes('ticket')) return 'airplane-sharp';
+  return 'receipt-sharp';
 };
 
 const formatDate = (dateString) => {
@@ -32,7 +33,7 @@ export default function ExpenseCard({ expense, isDarkMode = false, currency = 'U
 
   return (
     <TouchableOpacity 
-      style={[styles.container, { backgroundColor: theme.surface }, SHADOWS.small]}
+      style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border }, SHADOWS.small]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -40,7 +41,7 @@ export default function ExpenseCard({ expense, isDarkMode = false, currency = 'U
         {/* Left: Icon and Details */}
         <View style={styles.leftSection}>
           <View style={[styles.iconContainer, { backgroundColor: theme.surfaceSecondary }]}>
-            <Text style={styles.icon}>{icon}</Text>
+            <Ionicons name={icon} size={20} color={COLORS.primary} />
           </View>
           
           <View style={styles.details}>
@@ -82,7 +83,8 @@ export default function ExpenseCard({ expense, isDarkMode = false, currency = 'U
 const styles = StyleSheet.create({
   container: {
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
+    borderWidth: 1,
+    padding: SPACING.md,
     marginBottom: SPACING.sm,
   },
   content: {
@@ -104,16 +106,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: SPACING.sm,
   },
-  icon: {
-    fontSize: 20,
-  },
   details: {
     flex: 1,
   },
   description: {
     fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.semibold,
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
   },
   subtitle: {
     fontSize: FONT_SIZES.sm,
@@ -127,12 +126,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   amount: {
-    fontSize: FONT_SIZES.lg,
+    fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.bold,
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
   },
   statusText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.medium,
   },
 });

@@ -256,6 +256,15 @@ export const groupAPI = {
     });
     return response.data;
   },
+
+  /**
+   * Get settlements for a group
+   * @param {number} groupId - Group ID
+   */
+  getGroupSettlements: async (groupId) => {
+    const response = await api.get(`/groups/${groupId}/settlements`);
+    return response.data;
+  },
 };
 
 // ============================================

@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useData } from '../../contexts/DataContext';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
@@ -103,7 +104,7 @@ export default function FriendsScreen() {
           ))
         ) : (
           <View style={[styles.emptyState, { backgroundColor: theme.surface }]}>
-            <Text style={styles.emptyStateEmoji}>👥</Text>
+            <Ionicons name="people-outline" size={64} color={theme.textTertiary} style={styles.emptyStateIcon} />
             <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No friends yet</Text>
             <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
               Add friends to start splitting expenses together
@@ -192,8 +193,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: SPACING.xl,
   },
-  emptyStateEmoji: {
-    fontSize: 64,
+  emptyStateIcon: {
     marginBottom: SPACING.md,
   },
   emptyStateTitle: {

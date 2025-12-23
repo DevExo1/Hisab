@@ -4,3 +4,4 @@ export { ExpenseCard } from './ExpenseCard';
 export { GroupCard } from './GroupCard';
 export { FriendCard } from './FriendCard';
 export { ActivityItem } from './ActivityItem';
+export { SettlementCard } from './SettlementCard';

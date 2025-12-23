@@ -21,12 +21,12 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import FriendsScreen from '../screens/main/FriendsScreen';
 import GroupsScreen from '../screens/main/GroupsScreen';
-import ExpensesScreen from '../screens/main/ExpensesScreen';
 import ActivityScreen from '../screens/main/ActivityScreen';
 
 // Detail Screens
 import GroupDetailsScreen from '../screens/details/GroupDetailsScreen';
 import SettlementScreen from '../screens/details/SettlementScreen';
+import SettleDebtScreen from '../screens/details/SettleDebtScreen';
 import ProfileScreen from '../screens/settings/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
@@ -49,8 +49,6 @@ const MainTabs = () => {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Groups') {
             iconName = focused ? 'albums' : 'albums-outline';
-          } else if (route.name === 'Expenses') {
-            iconName = focused ? 'receipt' : 'receipt-outline';
           } else if (route.name === 'Activity') {
             iconName = focused ? 'time' : 'time-outline';
           }
@@ -72,7 +70,6 @@ const MainTabs = () => {
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Friends" component={FriendsScreen} />
       <Tab.Screen name="Groups" component={GroupsScreen} />
-      <Tab.Screen name="Expenses" component={ExpensesScreen} />
       <Tab.Screen name="Activity" component={ActivityScreen} />
     </Tab.Navigator>
   );
@@ -155,6 +152,14 @@ const AppStack = () => {
         component={SettlementScreen}
         options={{ 
           title: 'Settle Up',
+          headerBackTitleVisible: false,
+        }}
+      />
+      <Stack.Screen 
+        name="SettleDebt" 
+        component={SettleDebtScreen}
+        options={{ 
+          title: 'Record Payment',
           headerBackTitleVisible: false,
         }}
       />

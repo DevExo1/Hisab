@@ -32,16 +32,32 @@ class ApiClient {
     };
 
     try {
+      console.log(`API Request: ${options.method || 'GET'} ${endpoint}`);
+      if (options.body) {
+        console.log('Request Body:', options.body);
+      }
+      
       const response = await fetch(`${this.baseURL}${endpoint}`, config);
       
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || `HTTP ${response.status}`);
+        const errorText = await response.text();
+        console.error(`API Error Response (${response.status}):`, errorText);
+        
+        let errorData = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          // Not JSON, use text as is
+        }
+        
+        const errorMessage = errorData.detail || errorText || `HTTP ${response.status}`;
+        throw new Error(errorMessage);
       }
 
       return await response.json();
     } catch (error) {
-      console.error('API Request failed:', error);
+      console.error('API Request failed:', error.message || error);
+      console.error('Error details:', JSON.stringify(error));
       throw error;
     }
   }
@@ -181,6 +197,10 @@ class ApiClient {
 
   async getGroupPairwiseBalances(groupId) {
     return this.request(`/api/groups/${groupId}/pairwise-balances`);
+  }
+
+  async getGroupSettlements(groupId) {
+    return this.request(`/api/groups/${groupId}/settlements`);
   }
 
   // Expenses endpoints

@@ -61,34 +61,34 @@ export default function BalanceCard({ youOwe = 0, youAreOwed = 0, isDarkMode = f
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
   title: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
     textAlign: 'center',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   balancesRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   balanceItem: {
     alignItems: 'center',
   },
   amountGradient: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
     marginBottom: SPACING.xs,
-    minWidth: 120,
+    minWidth: 100,
     alignItems: 'center',
   },
   amountText: {
-    fontSize: FONT_SIZES.lg,
+    fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
   },
@@ -98,13 +98,13 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    marginVertical: SPACING.md,
+    marginVertical: SPACING.sm,
   },
   totalSection: {
     alignItems: 'center',
   },
   totalAmount: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: FONT_WEIGHTS.bold,
     marginBottom: SPACING.xs,
   },

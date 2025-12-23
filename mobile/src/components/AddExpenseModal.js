@@ -17,14 +17,18 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../constants/theme';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AddExpenseModal({ visible, onClose, onSubmit, group, isDarkMode = false }) {
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
+  const { user } = useAuth();
   
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
+  const [paidBy, setPaidBy] = useState(null);
   const [splitType, setSplitType] = useState('equal');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [customSplits, setCustomSplits] = useState({});
@@ -40,8 +44,10 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
       // Select all members by default
       setSelectedMembers(members.map(m => m.user_id || m.id));
       setCustomSplits({});
+      // Set current user as default payer
+      setPaidBy(user?.id);
     }
-  }, [visible, group]);
+  }, [visible, group, user]);
 
   const handleSubmit = async () => {
     // Validation
@@ -101,6 +107,7 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
       await onSubmit({
         description: description.trim(),
         amount: amountNum,
+        paid_by_user_id: paidBy,
         split_type: splitType,
         splits: splits,
       });
@@ -116,6 +123,7 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
   const handleClose = () => {
     setDescription('');
     setAmount('');
+    setPaidBy(user?.id);
     setSplitType('equal');
     setSelectedMembers([]);
     setCustomSplits({});
@@ -160,7 +168,14 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
             <View style={[styles.modalContent, { backgroundColor: theme.surface }, SHADOWS.large]}>
               {/* Header */}
               <View style={styles.header}>
-                <Text style={[styles.title, { color: theme.text }]}>Add Expense</Text>
+                <View style={styles.headerText}>
+                  <Text style={[styles.title, { color: theme.text }]}>Add Expense</Text>
+                  {group?.name && (
+                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                      to {group.name}
+                    </Text>
+                  )}
+                </View>
                 <TouchableOpacity
                   style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
                   onPress={handleClose}
@@ -191,6 +206,38 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
                     placeholderTextColor={theme.textTertiary}
                     editable={!isLoading}
                   />
+                </View>
+
+                {/* Paid By Selection */}
+                <View style={styles.formSection}>
+                  <Text style={[styles.label, { color: theme.text }]}>Paid By</Text>
+                  <View style={[styles.pickerContainer, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                    <Picker
+                      selectedValue={paidBy}
+                      onValueChange={(value) => setPaidBy(value)}
+                      style={[styles.picker, { color: theme.text, backgroundColor: 'transparent' }]}
+                      enabled={!isLoading}
+                      dropdownIconColor={theme.textSecondary}
+                      itemStyle={Platform.OS === 'ios' ? { height: 120 } : undefined}
+                    >
+                      {members.length === 0 && (
+                        <Picker.Item label="No members available" value={null} enabled={false} />
+                      )}
+                      {members.map((member) => {
+                        const memberId = member.user_id || member.id;
+                        const memberName = member.user_name || member.name;
+                        const label = memberId === user?.id ? `${memberName} (You)` : memberName;
+                        return (
+                          <Picker.Item 
+                            key={memberId} 
+                            label={label} 
+                            value={memberId}
+                            color={theme.text}
+                          />
+                        );
+                      })}
+                    </Picker>
+                  </View>
                 </View>
 
                 {/* Amount Input */}
@@ -362,11 +409,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  headerText: {
+    flex: 1,
   },
   title: {
     fontSize: FONT_SIZES.xl,
     fontWeight: FONT_WEIGHTS.bold,
+  },
+  subtitle: {
+    fontSize: FONT_SIZES.sm,
+    marginTop: 2,
   },
   closeButton: {
     width: 32,
@@ -380,7 +435,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   scrollContent: {
-    maxHeight: 450,
+    maxHeight: 500,
   },
   errorBox: {
     padding: SPACING.md,
@@ -393,7 +448,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   formSection: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   label: {
     fontSize: FONT_SIZES.sm,
@@ -401,10 +456,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   input: {
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     fontSize: FONT_SIZES.md,
+    height: 50,
   },
   splitTypeButtons: {
     flexDirection: 'row',
@@ -412,14 +469,30 @@ const styles = StyleSheet.create({
   },
   splitTypeButton: {
     flex: 1,
-    padding: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    height: 36,
   },
   splitTypeText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
+    textAlign: 'center',
+    numberOfLines: 1,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: Platform.OS === 'ios' ? 'visible' : 'hidden',
+    height: Platform.OS === 'ios' ? 150 : 50,
+    justifyContent: 'center',
+  },
+  picker: {
+    width: '100%',
+    height: Platform.OS === 'ios' ? 150 : 50,
   },
   membersList: {
     borderRadius: BORDER_RADIUS.md,
@@ -478,34 +551,41 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.md,
+    marginTop: SPACING.sm,
   },
   cancelButton: {
     flex: 1,
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
   },
   cancelButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.semibold,
+    numberOfLines: 1,
   },
   submitButton: {
     flex: 1,
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
+    height: 44,
   },
   submitButtonGradient: {
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    height: 44,
   },
   submitButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
+    numberOfLines: 1,
   },
   disabledButton: {
     opacity: 0.6,

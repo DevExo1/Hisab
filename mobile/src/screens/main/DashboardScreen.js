@@ -244,25 +244,6 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={[styles.quickActionButton, { backgroundColor: COLORS.primary }, SHADOWS.medium]}
-            onPress={() => navigation.navigate('Groups')}
-          >
-            <Text style={styles.quickActionEmoji}>👥</Text>
-            <Text style={styles.quickActionText}>Create Group</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.quickActionButton, { backgroundColor: COLORS.secondary }, SHADOWS.medium]}
-            onPress={() => navigation.navigate('Expenses')}
-          >
-            <Text style={styles.quickActionEmoji}>💰</Text>
-            <Text style={styles.quickActionText}>Add Expense</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Bottom Spacing */}
         <View style={styles.bottomSpacer} />
       </View>
@@ -384,14 +365,14 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   welcomeSection: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   greeting: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     marginBottom: 2,
   },
   userName: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: FONT_WEIGHTS.bold,
   },
   heroCard: {
@@ -455,30 +436,6 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: FONT_SIZES.sm,
     textAlign: 'center',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  quickActionButton: {
-    flex: 1,
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  quickActionEmoji: {
-    fontSize: 18,
-    marginRight: SPACING.xs,
-  },
-  quickActionText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: '#FFFFFF',
   },
   bottomSpacer: {
     height: SPACING.lg,

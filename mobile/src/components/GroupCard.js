@@ -5,23 +5,24 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { formatCurrency } from '../utils/currency';
 
-const getGroupEmoji = (name) => {
+const getGroupIcon = (name) => {
   const lowerName = name.toLowerCase();
-  if (lowerName.includes('trip') || lowerName.includes('travel')) return '✈️';
-  if (lowerName.includes('house') || lowerName.includes('home') || lowerName.includes('apartment')) return '🏠';
-  if (lowerName.includes('party') || lowerName.includes('celebration')) return '🎉';
-  if (lowerName.includes('family')) return '👨‍👩‍👧‍👦';
-  if (lowerName.includes('friends')) return '👥';
-  if (lowerName.includes('work') || lowerName.includes('office')) return '💼';
-  return '👥';
+  if (lowerName.includes('trip') || lowerName.includes('travel')) return 'airplane-sharp';
+  if (lowerName.includes('house') || lowerName.includes('home') || lowerName.includes('apartment')) return 'home-sharp';
+  if (lowerName.includes('party') || lowerName.includes('celebration')) return 'gift-sharp';
+  if (lowerName.includes('family')) return 'people-circle-sharp';
+  if (lowerName.includes('friends')) return 'people-sharp';
+  if (lowerName.includes('work') || lowerName.includes('office')) return 'briefcase-sharp';
+  return 'people-sharp';
 };
 
 export default function GroupCard({ group, isDarkMode = false, currency = 'USD', onPress }) {
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
-  const emoji = getGroupEmoji(group.name);
+  const icon = getGroupIcon(group.name);
   
   // Calculate balance from group's balances array if available
   let userBalance = 0;
@@ -38,7 +39,7 @@ export default function GroupCard({ group, isDarkMode = false, currency = 'USD',
 
   return (
     <TouchableOpacity 
-      style={[styles.container, { backgroundColor: theme.surface }, SHADOWS.medium]}
+      style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border }, SHADOWS.small]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -46,7 +47,7 @@ export default function GroupCard({ group, isDarkMode = false, currency = 'USD',
         {/* Icon and Name */}
         <View style={styles.leftSection}>
           <View style={[styles.iconContainer, { backgroundColor: theme.surfaceSecondary }]}>
-            <Text style={styles.emoji}>{emoji}</Text>
+            <Ionicons name={icon} size={28} color={COLORS.primary} />
           </View>
           
           <View style={styles.details}>
@@ -82,7 +83,8 @@ export default function GroupCard({ group, isDarkMode = false, currency = 'USD',
 const styles = StyleSheet.create({
   container: {
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
+    borderWidth: 1,
+    padding: SPACING.md,
     marginBottom: SPACING.sm,
   },
   content: {
@@ -99,21 +101,18 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 48,
     height: 48,
-    borderRadius: BORDER_RADIUS.sm,
+    borderRadius: BORDER_RADIUS.full,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.sm,
-  },
-  emoji: {
-    fontSize: 24,
   },
   details: {
     flex: 1,
   },
   groupName: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.bold,
-    marginBottom: SPACING.xs,
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+    marginBottom: 2,
   },
   memberCount: {
     fontSize: FONT_SIZES.sm,
@@ -122,7 +121,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   balanceAmount: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: FONT_SIZES.lg,
     fontWeight: FONT_WEIGHTS.bold,
     marginBottom: 2,
   },
@@ -131,7 +130,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   settledText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.medium,
   },
 });

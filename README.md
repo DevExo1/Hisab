@@ -295,13 +295,7 @@ python server.py   # Manual testing
 4. Commit with descriptive messages
 5. Push and create pull request
 
-### 11.11 Known Issues / TODO
 
-- [ ] Group editing API endpoint not yet implemented
-- [ ] Settlement flow needs UI implementation
-- [ ] Multi-currency conversion rates (future phase)
-- [ ] Offline sync (future phase)
-- [ ] Mobile app (React Native - future phase)
 
 ---
 

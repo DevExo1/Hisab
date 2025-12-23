@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExpenseCard } from '../components/cards';
+import { ExpenseCard, SettlementCard } from '../components/cards';
 import { formatCurrency } from '../utils/currency';
 import { groupAPI } from '../api';
 
@@ -16,10 +16,13 @@ export const GroupDetails = ({
 }) => {
   const [balanceData, setBalanceData] = useState(null);
   const [isLoadingBalances, setIsLoadingBalances] = useState(true);
+  const [settlements, setSettlements] = useState([]);
+  const [isLoadingSettlements, setIsLoadingSettlements] = useState(true);
 
   useEffect(() => {
     if (selectedGroupView) {
       fetchGroupBalances();
+      fetchGroupSettlements();
     }
   }, [selectedGroupView?.id]);
 
@@ -35,9 +38,42 @@ export const GroupDetails = ({
     }
   };
 
+  const fetchGroupSettlements = async () => {
+    try {
+      setIsLoadingSettlements(true);
+      const data = await groupAPI.getGroupSettlements(selectedGroupView.id);
+      setSettlements(data || []);
+    } catch (error) {
+      console.error('Failed to load settlements:', error);
+      // Set empty array on error so UI still works
+      setSettlements([]);
+    } finally {
+      setIsLoadingSettlements(false);
+    }
+  };
+
   if (!selectedGroupView) return null;
 
   const groupExpenses = expenses.filter(exp => exp.groupId === selectedGroupView.id);
+  
+  // Combine expenses and settlements into transactions
+  const transactions = [
+    ...groupExpenses.map(exp => ({
+      ...exp,
+      type: 'expense',
+      date: exp.date || exp.expense_date
+    })),
+    ...settlements.map(settlement => ({
+      id: `settlement-${settlement.id}`,
+      type: 'settlement',
+      description: settlement.notes || 'Settlement',
+      amount: settlement.amount,
+      date: settlement.settlement_date,
+      payer_id: settlement.payer_id,
+      payee_id: settlement.payee_id,
+      groupId: settlement.group_id
+    }))
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
   
   // Calculate totals
   const totalExpenses = groupExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -203,11 +239,11 @@ export const GroupDetails = ({
         </div>
       </div>
 
-      {/* Expenses Section */}
+      {/* Transactions Section */}
       <div>
         <div className="flex justify-between items-center mb-4">
           <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            Group Expenses
+            Group Transactions
           </h3>
           <button
             onClick={() => handleAddExpenseToGroup(selectedGroupView)}
@@ -219,15 +255,38 @@ export const GroupDetails = ({
         </div>
 
         <div className="space-y-3">
-          {groupExpenses.length === 0 ? (
+          {isLoadingSettlements ? (
             <div className={`${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600'} rounded-xl p-8 text-center border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <p className="text-lg mb-2">No expenses in this group yet</p>
+              <p className="text-lg">Loading transactions...</p>
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className={`${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600'} rounded-xl p-8 text-center border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <p className="text-lg mb-2">No transactions in this group yet</p>
               <p className="text-sm opacity-75">Click "Add Expense" to create the first expense</p>
             </div>
           ) : (
-            groupExpenses.map(expense => (
-              <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
-            ))
+            transactions.map(transaction => {
+              if (transaction.type === 'settlement') {
+                return (
+                  <SettlementCard 
+                    key={transaction.id} 
+                    settlement={transaction} 
+                    darkMode={darkMode} 
+                    currency={selectedGroupView.currency || currency}
+                    members={selectedGroupView.members}
+                  />
+                );
+              } else {
+                return (
+                  <ExpenseCard 
+                    key={transaction.id} 
+                    expense={transaction} 
+                    darkMode={darkMode} 
+                    currency={currency} 
+                  />
+                );
+              }
+            })
           )}
         </div>
       </div>
