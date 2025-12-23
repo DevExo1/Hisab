@@ -26,14 +26,19 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Database connection pool
+# NOTE: Under load, a small pool can lead to request hangs (waiting for a free connection),
+# which makes the frontend look like it has "no data".
+# We also set conservative timeouts so the API fails fast instead of wedging.
 try:
     db_pool = pooling.MySQLConnectionPool(
         pool_name="splitwise_pool",
-        pool_size=5,
+        pool_size=int(os.environ.get("DB_POOL_SIZE", "10")),
+        pool_reset_session=True,
         host=os.environ['DB_HOST'],
         user=os.environ['DB_USER'],
         password=os.environ['DB_PASSWORD'],
-        database=os.environ['DB_NAME']
+        database=os.environ['DB_NAME'],
+        connection_timeout=int(os.environ.get("DB_CONNECTION_TIMEOUT", "10")),
     )
     logging.info("Successfully created MySQL connection pool.")
 except mysql.connector.Error as err:
@@ -41,19 +46,28 @@ except mysql.connector.Error as err:
     exit()
 
 # FastAPI app and router
-app = FastAPI(title="Emergent Splitwise API")
+app = FastAPI(title="Hisab - Group Accounts Manager API")
 api_router = APIRouter(prefix="/api")
 
 # --- Database Dependency ---
 
 def get_db_connection():
-    """Dependency to get a database connection from the pool."""
+    """Dependency to get a database connection from the pool.
+
+    Important: if the pool is exhausted or the DB is unreachable, we should fail fast
+    (raise) rather than hanging and making the entire API appear down.
+    """
+    connection = None
     try:
         connection = db_pool.get_connection()
         yield connection
     finally:
-        if connection.is_connected():
-            connection.close()
+        try:
+            if connection is not None and getattr(connection, "is_connected", lambda: False)():
+                connection.close()
+        except Exception:
+            # Never let cleanup errors hide the real exception
+            pass
 
 # --- Security and Authentication ---
 
@@ -256,7 +270,7 @@ def update_user_profile(update_data: Dict[str, str], current_user: User = Depend
         
         if 'password' in update_data and update_data['password']:
             hashed_password = bcrypt.hashpw(update_data['password'].encode('utf-8'), bcrypt.gensalt())
-            updates.append("password_hash = %s")
+            updates.append("hashed_password = %s")
             params.append(hashed_password.decode('utf-8'))
         
         if not updates:
@@ -713,6 +727,172 @@ def get_group_balances(group_id: int, current_user: User = Depends(get_current_u
     finally:
         cursor.close()
 
+@api_router.get("/groups/{group_id}/pairwise-balances", response_model=Dict[str, Any])
+def get_pairwise_balances(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get detailed pairwise balances showing who owes whom and from which expenses."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Check if user is a member
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id = %s AND is_active = TRUE
+        """, (group_id, current_user.id))
+        if cursor.fetchone()['count'] == 0:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        
+        # Get all expenses and their splits for this group
+        cursor.execute("""
+            SELECT 
+                e.id as expense_id,
+                e.description,
+                e.amount as total_amount,
+                e.expense_date,
+                e.paid_by as paid_by_user_id,
+                payer.full_name as paid_by_name,
+                es.user_id as owes_user_id,
+                ower.full_name as owes_user_name,
+                es.amount as owed_amount
+            FROM expenses e
+            INNER JOIN users payer ON e.paid_by = payer.id
+            INNER JOIN expense_splits es ON e.id = es.expense_id
+            INNER JOIN users ower ON es.user_id = ower.id
+            WHERE e.group_id = %s
+            ORDER BY e.expense_date DESC
+        """, (group_id,))
+        
+        expense_data = cursor.fetchall()
+        
+        # Calculate bidirectional balances first
+        # Structure: {(user_id_1, user_id_2): {'user1_owes_user2': X, 'user2_owes_user1': Y, 'expenses': [...]}}
+        bidirectional = {}
+        
+        for row in expense_data:
+            paid_by = row['paid_by_user_id']
+            owes_by = row['owes_user_id']
+            amount = float(row['owed_amount'])
+            
+            # Skip if same person (they paid for themselves)
+            if paid_by == owes_by:
+                continue
+            
+            # Create a normalized key (always smaller id first) to group bidirectional debts
+            user_pair = tuple(sorted([owes_by, paid_by]))
+            
+            if user_pair not in bidirectional:
+                # Get names for both users
+                user1_name = row['owes_user_name'] if owes_by == user_pair[0] else row['paid_by_name']
+                user2_name = row['paid_by_name'] if paid_by == user_pair[1] else row['owes_user_name']
+                
+                bidirectional[user_pair] = {
+                    'user1_id': user_pair[0],
+                    'user1_name': user1_name,
+                    'user2_id': user_pair[1],
+                    'user2_name': user2_name,
+                    'user1_owes_user2': 0.0,  # user_pair[0] owes user_pair[1]
+                    'user2_owes_user1': 0.0,  # user_pair[1] owes user_pair[0]
+                    'expenses_user1_owes_user2': [],
+                    'expenses_user2_owes_user1': []
+                }
+            
+            # Add to appropriate direction
+            if owes_by == user_pair[0] and paid_by == user_pair[1]:
+                # User1 owes User2
+                bidirectional[user_pair]['user1_owes_user2'] += amount
+                bidirectional[user_pair]['expenses_user1_owes_user2'].append({
+                    'expense_id': row['expense_id'],
+                    'description': row['description'],
+                    'amount': amount,
+                    'date': row['expense_date'].isoformat() if row['expense_date'] else None
+                })
+            else:
+                # User2 owes User1
+                bidirectional[user_pair]['user2_owes_user1'] += amount
+                bidirectional[user_pair]['expenses_user2_owes_user1'].append({
+                    'expense_id': row['expense_id'],
+                    'description': row['description'],
+                    'amount': amount,
+                    'date': row['expense_date'].isoformat() if row['expense_date'] else None
+                })
+        
+        # Apply settlements to adjust balances
+        cursor.execute("""
+            SELECT s.payer_id, s.payee_id, s.amount,
+                   payer.full_name as payer_name,
+                   payee.full_name as payee_name
+            FROM settlements s
+            INNER JOIN users payer ON s.payer_id = payer.id
+            INNER JOIN users payee ON s.payee_id = payee.id
+            WHERE s.group_id = %s
+        """, (group_id,))
+        settlements = cursor.fetchall()
+        
+        # Apply settlements to bidirectional balances
+        for settlement in settlements:
+            payer_id = settlement['payer_id']
+            payee_id = settlement['payee_id']
+            amount = float(settlement['amount'])
+            
+            # Find the user pair
+            user_pair = tuple(sorted([payer_id, payee_id]))
+            
+            if user_pair in bidirectional:
+                # Determine which direction to reduce
+                if payer_id == user_pair[0]:
+                    # payer is user1, so reduce user1_owes_user2
+                    bidirectional[user_pair]['user1_owes_user2'] -= amount
+                else:
+                    # payer is user2, so reduce user2_owes_user1
+                    bidirectional[user_pair]['user2_owes_user1'] -= amount
+        
+        # Calculate net balances and create pairwise list
+        pairwise_list = []
+        
+        for user_pair, data in bidirectional.items():
+            user1_owes = data['user1_owes_user2']
+            user2_owes = data['user2_owes_user1']
+            net_balance = user1_owes - user2_owes
+            
+            # Only include if there's a net debt > 0.01
+            if abs(net_balance) > 0.01:
+                if net_balance > 0:
+                    # User1 owes User2 (net)
+                    pairwise_list.append({
+                        'from_user_id': data['user1_id'],
+                        'from_user_name': data['user1_name'],
+                        'to_user_id': data['user2_id'],
+                        'to_user_name': data['user2_name'],
+                        'total_amount': net_balance,
+                        'breakdown': {
+                            'owes': user1_owes,
+                            'owed_back': user2_owes
+                        },
+                        'expenses': data['expenses_user1_owes_user2'] + data['expenses_user2_owes_user1']
+                    })
+                else:
+                    # User2 owes User1 (net)
+                    pairwise_list.append({
+                        'from_user_id': data['user2_id'],
+                        'from_user_name': data['user2_name'],
+                        'to_user_id': data['user1_id'],
+                        'to_user_name': data['user1_name'],
+                        'total_amount': abs(net_balance),
+                        'breakdown': {
+                            'owes': user2_owes,
+                            'owed_back': user1_owes
+                        },
+                        'expenses': data['expenses_user2_owes_user1'] + data['expenses_user1_owes_user2']
+                    })
+        
+        # Sort by amount (highest first)
+        pairwise_list.sort(key=lambda x: x['total_amount'], reverse=True)
+        
+        return {"pairwise_balances": pairwise_list}
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
 def calculate_settlements(balances: List[Balance]) -> List[Dict]:
     """
     Calculate simplified settlements using a greedy algorithm.
@@ -758,7 +938,10 @@ def calculate_settlements(balances: List[Balance]) -> List[Dict]:
 
 @api_router.post("/settlements/", response_model=Settlement, status_code=status.HTTP_201_CREATED)
 def record_settlement(settlement: SettlementCreate, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
-    """Record a settlement (payment) between two users in a group."""
+    """
+    Record a settlement (payment) between two users in a group.
+    Supports both full and partial settlements.
+    """
     cursor = db_conn.cursor()
     try:
         # Verify current user is a member of the group
@@ -779,7 +962,11 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
         if result[0] != 2:
             raise HTTPException(status_code=400, detail="Payer or payee is not a member of this group")
         
-        # Insert settlement
+        # Validate amount
+        if settlement.amount <= 0:
+            raise HTTPException(status_code=400, detail="Settlement amount must be positive")
+        
+        # Insert settlement (can be partial or full)
         settlement_date = datetime.utcnow()
         cursor.execute("""
             INSERT INTO settlements (group_id, payer_id, payee_id, amount, notes, settlement_date)
@@ -798,6 +985,60 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
     except mysql.connector.Error as err:
         db_conn.rollback()
         raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
+@api_router.get("/groups/{group_id}/settlements", response_model=List[Settlement])
+def get_group_settlements(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get all settlements (payments) for a specific group."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Verify user is a member
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM group_members 
+            WHERE group_id = %s AND user_id = %s AND is_active = TRUE
+        """, (group_id, current_user.id))
+        if cursor.fetchone()['count'] == 0:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        
+        # Get settlements
+        cursor.execute("""
+            SELECT id, group_id, payer_id, payee_id, amount, notes, settlement_date
+            FROM settlements
+            WHERE group_id = %s
+            ORDER BY settlement_date DESC
+        """, (group_id,))
+        
+        settlements = cursor.fetchall()
+        return [Settlement(**s) for s in settlements]
+    finally:
+        cursor.close()
+
+@api_router.get("/expenses/")
+def get_all_expenses(current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get all expenses for the current user across all their groups."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT
+                e.id,
+                e.description,
+                e.amount,
+                e.paid_by as paid_by_user_id,
+                e.group_id,
+                e.expense_date,
+                g.name as group_name,
+                payer.full_name as paid_by_name
+            FROM expenses e
+            INNER JOIN groups g ON e.group_id = g.id
+            INNER JOIN group_members gm ON g.id = gm.group_id
+            INNER JOIN users payer ON e.paid_by = payer.id
+            WHERE gm.user_id = %s AND gm.is_active = TRUE
+            ORDER BY e.expense_date DESC
+        """, (current_user.id,))
+        
+        expenses = cursor.fetchall()
+        return expenses
     finally:
         cursor.close()
 
@@ -829,6 +1070,78 @@ def get_expense_splits(expense_id: int, current_user: User = Depends(get_current
         return {"expense_id": expense_id, "splits": splits}
     finally:
         cursor.close()
+
+@api_router.get("/activity")
+def get_activity(current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """Get recent activity (expenses and settlements) for the current user across all groups."""
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Get recent expenses from user's groups
+        cursor.execute("""
+            SELECT
+                e.id,
+                e.description,
+                e.amount,
+                e.expense_date as date,
+                'expense' as type,
+                e.group_id,
+                g.name as group_name,
+                payer.full_name as paid_by_name,
+                e.paid_by as paid_by_user_id
+            FROM expenses e
+            INNER JOIN groups g ON e.group_id = g.id
+            INNER JOIN group_members gm ON g.id = gm.group_id
+            INNER JOIN users payer ON e.paid_by = payer.id
+            WHERE gm.user_id = %s AND gm.is_active = TRUE
+            ORDER BY e.expense_date DESC
+            LIMIT 20
+        """, (current_user.id,))
+        
+        expenses = cursor.fetchall()
+        
+        # Get recent settlements from user's groups
+        cursor.execute("""
+            SELECT
+                s.id,
+                s.amount,
+                s.settlement_date as date,
+                'settlement' as type,
+                s.group_id,
+                g.name as group_name,
+                payer.full_name as payer_name,
+                payee.full_name as payee_name,
+                s.payer_id,
+                s.payee_id,
+                s.notes
+            FROM settlements s
+            INNER JOIN groups g ON s.group_id = g.id
+            INNER JOIN group_members gm ON g.id = gm.group_id
+            INNER JOIN users payer ON s.payer_id = payer.id
+            INNER JOIN users payee ON s.payee_id = payee.id
+            WHERE gm.user_id = %s AND gm.is_active = TRUE
+            ORDER BY s.settlement_date DESC
+            LIMIT 20
+        """, (current_user.id,))
+        
+        settlements = cursor.fetchall()
+        
+        # Combine and sort by date
+        all_activity = expenses + settlements
+        all_activity.sort(key=lambda x: x['date'], reverse=True)
+        
+        # Return top 50 items
+        return all_activity[:50]
+    finally:
+        cursor.close()
+
+@api_router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
+def register_user_alias(user: UserCreate, db_conn = Depends(get_db_connection)):
+    """Alias endpoint for registration (same as POST /api/users/)."""
+    db_user = get_user_by_email(db_conn, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    new_user = create_db_user(db_conn, user)
+    return new_user
 
 # --- App Initialization ---
 

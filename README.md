@@ -1,4 +1,4 @@
-# Splitwise Clone – Product Requirements Document (PRD)
+# Hisab - Group Accounts Manager – Product Requirements Document (PRD)
 
 ## 1. Product overview
 

@@ -9,7 +9,7 @@ import { useAuth, useData } from './hooks';
 import { Header, Navigation } from './components/layout';
 
 // Page Components
-import { Dashboard, Expenses, Groups, Friends, Activity } from './pages';
+import { Dashboard, Expenses, Groups, Friends, Activity, SettlementView } from './pages';
 
 // Modal Components
 import {
@@ -22,7 +22,7 @@ import {
 import { ProfileSettingsModal } from './components/modals/ProfileSettingsModal';
 
 // API functions
-import { groupAPI, expenseAPI } from './api';
+import { groupAPI, expenseAPI, friendsAPI, userAPI } from './api';
 
 function App() {
   // UI State
@@ -38,6 +38,7 @@ function App() {
   const [editingGroup, setEditingGroup] = useState(null);
   const [selectedGroupForExpense, setSelectedGroupForExpense] = useState(null);
   const [selectedGroupView, setSelectedGroupView] = useState(null);
+  const [showSettlementView, setShowSettlementView] = useState(false);
 
   // Custom Hooks
   const { user, loading: authLoading, login, logout, isAuthenticated } = useAuth();
@@ -165,20 +166,28 @@ function App() {
       console.log('handleEditGroup called with:', groupData);
       console.log('Available friends:', friends);
       console.log('Current user:', user);
-      
-      // Get member IDs from names
-      const memberIds = [user.id]; // Always include current user
 
-      groupData.members.forEach(memberName => {
-        if (memberName !== 'You') {
-          const friend = friends.find(f => f.name === memberName);
-          if (friend) {
-            memberIds.push(friend.id);
-          } else {
-            console.warn(`Friend not found: ${memberName}`);
+      // Prefer explicit member_ids if provided by the modal (more reliable than name matching)
+      let memberIds = null;
+      if (Array.isArray(groupData.member_ids) && groupData.member_ids.length > 0) {
+        memberIds = [...new Set(groupData.member_ids.map((id) => parseInt(id, 10)).filter((n) => Number.isFinite(n)))];
+      }
+
+      // Backwards-compat: derive member IDs from names
+      if (!memberIds) {
+        memberIds = [user.id]; // Always include current user
+
+        (groupData.members || []).forEach(memberName => {
+          if (memberName !== 'You') {
+            const friend = friends.find(f => f.name === memberName);
+            if (friend) {
+              memberIds.push(friend.id);
+            } else {
+              console.warn(`Friend not found: ${memberName}`);
+            }
           }
-        }
-      });
+        });
+      }
 
       console.log('Member IDs to send:', memberIds);
 
@@ -204,29 +213,14 @@ function App() {
    */
   const handleAddFriend = async (friendData) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/friends/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          friend_email: friendData.email
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Friend added successfully! ${result.friend.name} is now your friend.`);
-        // Reload data to refresh friends list
-        await loadAllData();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to add friend');
-      }
+      const result = await friendsAPI.addFriend(friendData.email);
+      alert(`Friend added successfully! ${result.friend.name} is now your friend.`);
+      await loadAllData();
     } catch (error) {
       console.error('Failed to add friend:', error);
-      throw error; // Re-throw so modal can display the error
+      // Normalize error message for modal
+      const message = error?.response?.data?.detail || error?.message || 'Failed to add friend';
+      throw new Error(message);
     }
   };
 
@@ -248,6 +242,16 @@ function App() {
     setSelectedGroupView(null);
   };
 
+  const handleOpenSettlement = (group) => {
+    setSelectedGroupView(group);
+    setShowSettlementView(true);
+  };
+
+  const handleBackFromSettlement = () => {
+    setShowSettlementView(false);
+    // Stay on the group, just go back to details
+  };
+
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
       logout();
@@ -261,27 +265,13 @@ function App() {
 
   const handleUpdateProfile = async (updateData) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/users/me`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (response.ok) {
-        const updatedUser = await response.json();
-        alert('Profile updated successfully!');
-        // Reload data to refresh user info
-        await loadAllData();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to update profile');
-      }
+      await userAPI.updateProfile(updateData);
+      alert('Profile updated successfully!');
+      await loadAllData();
     } catch (error) {
       console.error('Failed to update profile:', error);
-      throw error; // Re-throw so modal can display the error
+      const message = error?.response?.data?.detail || error?.message || 'Failed to update profile';
+      throw new Error(message);
     }
   };
 
@@ -308,6 +298,18 @@ function App() {
           />
         );
       case 'groups':
+        // Show SettlementView if active, otherwise show Groups page
+        if (showSettlementView && selectedGroupView) {
+          return (
+            <SettlementView
+              darkMode={darkMode}
+              currency={currency}
+              selectedGroup={selectedGroupView}
+              onBack={handleBackFromSettlement}
+              user={user}
+            />
+          );
+        }
         return (
           <Groups
             darkMode={darkMode}
@@ -320,6 +322,8 @@ function App() {
             handleAddExpenseToGroup={handleAddExpenseToGroup}
             handleViewGroupDetails={handleViewGroupDetails}
             handleBackFromGroupDetails={handleBackFromGroupDetails}
+            handleOpenSettlement={handleOpenSettlement}
+            user={user}
           />
         );
       case 'friends':
@@ -414,6 +418,7 @@ function App() {
           currency={currency}
           groups={groups}
           selectedGroup={selectedGroupForExpense}
+          user={user}
         />
 
         <CreateGroupModal
@@ -435,6 +440,7 @@ function App() {
           darkMode={darkMode}
           group={editingGroup}
           friends={friends}
+          currentUser={user}
         />
 
         <AddFriendModal

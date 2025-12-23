@@ -5,6 +5,7 @@
 USE emergent_splitwise_db;
 
 -- Drop tables if they exist (for clean setup)
+DROP TABLE IF EXISTS user_friends;
 DROP TABLE IF EXISTS expense_splits;
 DROP TABLE IF EXISTS expenses;
 DROP TABLE IF EXISTS settlements;
@@ -28,11 +29,25 @@ CREATE TABLE groups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    currency VARCHAR(10) DEFAULT 'USD',
     created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_created_by (created_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- User friends table (bidirectional friendships)
+CREATE TABLE user_friends (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    friend_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_friend (user_id, friend_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_friend_id (friend_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Group members table (many-to-many relationship)
@@ -110,9 +125,9 @@ INSERT INTO users (email, hashed_password, full_name) VALUES
 ('charlie@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5NU7L/tLnk5g2', 'Charlie Brown');
 
 -- Sample groups
-INSERT INTO groups (name, description, created_by) VALUES
-('Apartment 305', 'Roommates sharing rent and utilities', 1),
-('Italy Trip 2025', 'Summer vacation expenses', 1);
+INSERT INTO groups (name, description, created_by, currency) VALUES
+('Apartment 305', 'Roommates sharing rent and utilities', 1, 'USD'),
+('Italy Trip 2025', 'Summer vacation expenses', 1, 'USD');
 
 -- Sample group members
 INSERT INTO group_members (group_id, user_id) VALUES

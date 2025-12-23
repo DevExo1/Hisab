@@ -116,11 +116,64 @@ export const userAPI = {
   },
 
   /**
+   * Update current user profile (name and/or password)
+   * @param {{name?: string, password?: string}} updateData
+   */
+  updateProfile: async (updateData) => {
+    const response = await api.put('/users/me', updateData);
+    localStorage.setItem('user', JSON.stringify(response.data));
+    return response.data;
+  },
+
+  /**
    * Get cached user from localStorage
    */
   getCachedUser: () => {
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
+  },
+};
+
+// ============================================
+// Group APIs
+// ============================================
+
+// ============================================
+// Friends APIs
+// ============================================
+
+export const friendsAPI = {
+  /**
+   * Get current user's friends
+   */
+  getFriends: async () => {
+    const response = await api.get('/friends/');
+    return response.data;
+  },
+
+  /**
+   * Add friend by email
+   * @param {string} friendEmail
+   */
+  addFriend: async (friendEmail) => {
+    const response = await api.post('/friends/', {
+      friend_email: friendEmail,
+    });
+    return response.data;
+  },
+};
+
+// ============================================
+// Activity APIs
+// ============================================
+
+export const activityAPI = {
+  /**
+   * Get recent activity for current user
+   */
+  getActivity: async () => {
+    const response = await api.get('/activity');
+    return response.data;
   },
 };
 
@@ -167,6 +220,15 @@ export const groupAPI = {
    */
   getGroupBalances: async (groupId) => {
     const response = await api.get(`/groups/${groupId}/balances`);
+    return response.data;
+  },
+
+  /**
+   * Get detailed pairwise balances for a group
+   * @param {number} groupId - Group ID
+   */
+  getGroupPairwiseBalances: async (groupId) => {
+    const response = await api.get(`/groups/${groupId}/pairwise-balances`);
     return response.data;
   },
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CURRENCIES } from '../../utils/currency';
 
-export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends = [], currency, groups = [], selectedGroup = null }) => {
+export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends = [], currency, groups = [], selectedGroup = null, user = null }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [paidBy, setPaidBy] = useState('You');
@@ -20,9 +20,36 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
   const expenseCurrency = currentGroup?.currency || currency;
   const currencySymbol = CURRENCIES.find(c => c.code === expenseCurrency)?.symbol || '$';
 
+  // If we're in a group context, use group members directly (excluding current user)
+  // Group members are User objects with id, name, and email properties
+  const availableFriends = selectedGroup 
+    ? selectedGroup.members
+        .filter(member => user ? member.id !== user.id : member.name !== 'You')
+        .map(member => ({
+          id: member.id,
+          name: member.name,
+          email: member.email
+        }))
+    : friends;
+
+  // Initialize selected friends from group members when modal opens
+  useEffect(() => {
+    if (isOpen && selectedGroup) {
+      console.log('Modal opened with selectedGroup:', selectedGroup);
+      console.log('Available friends:', availableFriends);
+      const groupFriendNames = availableFriends.map(f => f.name);
+      console.log('Setting selected friends to:', groupFriendNames);
+      setSelectedFriends(groupFriendNames.length > 0 ? [groupFriendNames[0]] : []);
+    }
+  }, [isOpen, selectedGroup]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (description && amount && (groupId || !groups.length)) {
+    
+    // For group context, use selectedGroup.id, otherwise use groupId from state
+    const effectiveGroupId = selectedGroup?.id || groupId;
+    
+    if (description && amount && (effectiveGroupId || !groups.length)) {
       // Validation for percentage split
       if (splitType === 'percentage') {
         const participants = getParticipants();
@@ -58,17 +85,25 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
         customSplits: splitType === 'equal' ? {} : customSplits,
         date: new Date().toISOString(),
         icon: '🍽️',
-        groupId: groupId ? parseInt(groupId) : null,
+        groupId: effectiveGroupId ? parseInt(effectiveGroupId) : null,
         groupName: currentGroup?.name || null,
         currency: expenseCurrency
       });
       setDescription('');
       setAmount('');
       setPaidBy('You');
-      setSelectedFriends(friends.length > 0 ? [friends[0].name] : []);
+      setSelectedFriends(availableFriends.length > 0 ? [availableFriends[0].name] : []);
       setCustomSplits({});
       setGroupId(selectedGroup?.id || '');
       onClose();
+    } else {
+      // Debug: log what's missing
+      console.log('Form validation failed:', {
+        description: !!description,
+        amount: !!amount,
+        effectiveGroupId: !!effectiveGroupId,
+        groupsLength: groups.length
+      });
     }
   };
 
@@ -110,38 +145,53 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
           {groups.length > 0 && (
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Select Group
+                {selectedGroup ? 'Group' : 'Select Group'}
               </label>
-              <select
-                value={groupId}
-                onChange={(e) => {
-                  setGroupId(e.target.value);
-                  // Reset selected friends when group changes
-                  const newGroup = groups.find(g => g.id === parseInt(e.target.value));
-                  if (newGroup) {
-                    const groupFriends = newGroup.members.filter(member => member !== 'You');
-                    setSelectedFriends(groupFriends.length > 0 ? [groupFriends[0]] : []);
-                  }
-                }}
-                className={`w-full p-3 rounded-lg border ${
+              {selectedGroup ? (
+                <div className={`w-full p-3 rounded-lg border ${
                   darkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300 text-gray-900'
-                } focus:ring-2 focus:ring-green-500 focus:border-transparent`}
-                required={groups.length > 0}
-              >
-                <option value="">Select a group...</option>
-                {groups.map(group => (
-                  <option key={group.id} value={group.id}>
-                    {group.name} ({group.currency || currency})
-                  </option>
-                ))}
-                <option value="none">No group (personal expense)</option>
-              </select>
-              {currentGroup && (
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Currency: {expenseCurrency} • {currentGroup.members.length} members
-                </p>
+                    ? 'bg-gray-700 border-gray-600 text-gray-400'
+                    : 'bg-gray-100 border-gray-300 text-gray-700'
+                }`}>
+                  {selectedGroup.name} ({expenseCurrency})
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
+                    {selectedGroup.members.length} members
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={groupId}
+                    onChange={(e) => {
+                      setGroupId(e.target.value);
+                      // Reset selected friends when group changes
+                      const newGroup = groups.find(g => g.id === parseInt(e.target.value));
+                      if (newGroup) {
+                        const groupFriends = newGroup.members.filter(member => member !== 'You');
+                        setSelectedFriends(groupFriends.length > 0 ? [groupFriends[0]] : []);
+                      }
+                    }}
+                    className={`w-full p-3 rounded-lg border ${
+                      darkMode
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    } focus:ring-2 focus:ring-green-500 focus:border-transparent`}
+                    required={groups.length > 0}
+                  >
+                    <option value="">Select a group...</option>
+                    {groups.map(group => (
+                      <option key={group.id} value={group.id}>
+                        {group.name} ({group.currency || currency})
+                      </option>
+                    ))}
+                    <option value="none">No group (personal expense)</option>
+                  </select>
+                  {currentGroup && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Currency: {expenseCurrency} • {currentGroup.members.length} members
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -197,7 +247,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
               } focus:ring-2 focus:ring-green-500 focus:border-transparent`}
             >
               <option value="You">You</option>
-              {friends.map(friend => (
+              {availableFriends.map(friend => (
                 <option key={friend.id} value={friend.name}>{friend.name}</option>
               ))}
             </select>
@@ -208,7 +258,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
               Split with
             </label>
             <div className="space-y-2">
-              {friends.map(friend => (
+              {availableFriends.map(friend => (
                 <label key={friend.id} className="flex items-center space-x-2">
                   <input
                     type="checkbox"

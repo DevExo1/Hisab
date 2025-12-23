@@ -28,20 +28,23 @@ export const CURRENCIES = [
 
 // Format currency function
 export const formatCurrency = (amount, currency) => {
+  // Ensure amount is a number
+  const numAmount = typeof amount === 'number' ? amount : parseFloat(amount) || 0;
+  
   const currencyObj = CURRENCIES.find(c => c.code === currency) || CURRENCIES[0];
 
   // Currencies that don't use decimal places
   const noDecimalCurrencies = ['JPY', 'KRW', 'VND', 'IDR'];
 
   if (noDecimalCurrencies.includes(currency)) {
-    return `${currencyObj.symbol}${Math.round(amount)}`;
+    return `${currencyObj.symbol}${Math.round(numAmount)}`;
   }
 
   // Special formatting for some currencies
   if (currency === 'NPR' || currency === 'INR' || currency === 'LKR' || currency === 'PKR') {
     // For rupee-based currencies, format with 2 decimal places
-    return `${currencyObj.symbol} ${amount.toFixed(2)}`;
+    return `${currencyObj.symbol} ${numAmount.toFixed(2)}`;
   }
 
-  return `${currencyObj.symbol}${amount.toFixed(2)}`;
+  return `${currencyObj.symbol}${numAmount.toFixed(2)}`;
 };

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ExpenseCard } from '../components/cards';
 import { formatCurrency } from '../utils/currency';
+import { groupAPI } from '../api';
 
 export const GroupDetails = ({
   selectedGroupView,
@@ -9,17 +10,45 @@ export const GroupDetails = ({
   expenses,
   handleBackFromGroupDetails,
   handleEditGroupClick,
-  handleAddExpenseToGroup
+  handleAddExpenseToGroup,
+  handleOpenSettlement,
+  user
 }) => {
+  const [balanceData, setBalanceData] = useState(null);
+  const [isLoadingBalances, setIsLoadingBalances] = useState(true);
+
+  useEffect(() => {
+    if (selectedGroupView) {
+      fetchGroupBalances();
+    }
+  }, [selectedGroupView?.id]);
+
+  const fetchGroupBalances = async () => {
+    try {
+      setIsLoadingBalances(true);
+      const data = await groupAPI.getGroupBalances(selectedGroupView.id);
+      setBalanceData(data);
+    } catch (error) {
+      console.error('Failed to load balances:', error);
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  };
+
   if (!selectedGroupView) return null;
 
   const groupExpenses = expenses.filter(exp => exp.groupId === selectedGroupView.id);
   
   // Calculate totals
   const totalExpenses = groupExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-  const youOwe = groupExpenses.reduce((sum, exp) => sum + (exp.youOwe || 0), 0);
-  const youAreOwed = groupExpenses.reduce((sum, exp) => sum + (exp.youAreOwed || 0), 0);
-  const netBalance = youAreOwed - youOwe;
+  
+  // Get current user's balance from the balance data
+  const currentUserBalance = balanceData?.balances?.find(b => b.user_id === user?.id);
+  const netBalance = currentUserBalance?.balance || 0;
+  
+  // Calculate "You Owe" and "You Are Owed" from net balance
+  const youOwe = netBalance < 0 ? Math.abs(netBalance) : 0;
+  const youAreOwed = netBalance > 0 ? netBalance : 0;
 
   return (
     <div className="space-y-6">
@@ -55,31 +84,59 @@ export const GroupDetails = ({
 
         {/* You Owe Card */}
         <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} rounded-xl border p-5 hover-lift`}>
-          <div className="flex items-center space-x-3">
-            <div className={`w-12 h-12 ${darkMode ? 'bg-slate-700' : 'bg-red-50'} rounded-xl flex items-center justify-center`}>
-              <span className="text-2xl">💸</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className={`w-12 h-12 ${darkMode ? 'bg-slate-700' : 'bg-red-50'} rounded-xl flex items-center justify-center`}>
+                <span className="text-2xl">💸</span>
+              </div>
+              <div>
+                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>You Owe</p>
+                {isLoadingBalances ? (
+                  <p className={`text-xl font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>...</p>
+                ) : (
+                  <p className={`text-xl font-bold text-gradient-coral`}>
+                    {formatCurrency(youOwe, selectedGroupView.currency || currency)}
+                  </p>
+                )}
+              </div>
             </div>
-            <div>
-              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>You Owe</p>
-              <p className={`text-xl font-bold text-gradient-coral`}>
-                {formatCurrency(youOwe, selectedGroupView.currency || currency)}
-              </p>
-            </div>
+            {!isLoadingBalances && youOwe > 0 && (
+              <button
+                onClick={() => handleOpenSettlement(selectedGroupView)}
+                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-medium hover:from-teal-600 hover:to-emerald-600 transition-all shadow-md text-sm"
+              >
+                Settle Up
+              </button>
+            )}
           </div>
         </div>
 
         {/* You Are Owed Card */}
         <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} rounded-xl border p-5 hover-lift`}>
-          <div className="flex items-center space-x-3">
-            <div className={`w-12 h-12 ${darkMode ? 'bg-slate-700' : 'bg-green-50'} rounded-xl flex items-center justify-center`}>
-              <span className="text-2xl">💵</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className={`w-12 h-12 ${darkMode ? 'bg-slate-700' : 'bg-green-50'} rounded-xl flex items-center justify-center`}>
+                <span className="text-2xl">💵</span>
+              </div>
+              <div>
+                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>You're Owed</p>
+                {isLoadingBalances ? (
+                  <p className={`text-xl font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>...</p>
+                ) : (
+                  <p className={`text-xl font-bold text-gradient-teal`}>
+                    {formatCurrency(youAreOwed, selectedGroupView.currency || currency)}
+                  </p>
+                )}
+              </div>
             </div>
-            <div>
-              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>You're Owed</p>
-              <p className={`text-xl font-bold text-gradient-teal`}>
-                {formatCurrency(youAreOwed, selectedGroupView.currency || currency)}
-              </p>
-            </div>
+            {!isLoadingBalances && (youOwe > 0 || youAreOwed > 0) && (
+              <button
+                onClick={() => handleOpenSettlement(selectedGroupView)}
+                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-medium hover:from-teal-600 hover:to-emerald-600 transition-all shadow-md text-sm"
+              >
+                Settle Up
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -90,12 +147,16 @@ export const GroupDetails = ({
           <div>
             <p className={`text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Your Net Balance</p>
             <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1`}>
-              {netBalance > 0 ? 'You are owed overall' : netBalance < 0 ? 'You owe overall' : 'You are settled up'}
+              {isLoadingBalances ? 'Loading...' : netBalance > 0 ? 'You are owed overall' : netBalance < 0 ? 'You owe overall' : 'You are settled up'}
             </p>
           </div>
-          <p className={`text-2xl font-bold ${netBalance > 0 ? 'text-gradient-teal' : netBalance < 0 ? 'text-gradient-coral' : darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-            {netBalance > 0 ? '+' : ''}{formatCurrency(netBalance, selectedGroupView.currency || currency)}
-          </p>
+          {isLoadingBalances ? (
+            <p className={`text-2xl font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>...</p>
+          ) : (
+            <p className={`text-2xl font-bold ${netBalance > 0 ? 'text-gradient-teal' : netBalance < 0 ? 'text-gradient-coral' : darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+              {netBalance > 0 ? '+' : ''}{formatCurrency(netBalance, selectedGroupView.currency || currency)}
+            </p>
+          )}
         </div>
       </div>
 

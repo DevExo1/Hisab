@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authAPI } from '../../api';
 
 export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -26,28 +27,12 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
         }
       } else {
         // Handle signup
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/users/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: email,
-            password: password,
-            name: name,
-          }),
-        });
-
-        if (response.ok) {
-          // Registration successful, now login
-          alert('Account created successfully! Please login.');
-          setIsLogin(true);
-          setPassword('');
-          setName('');
-        } else {
-          const errorData = await response.json();
-          setError(errorData.detail || 'Registration failed. Please try again.');
-        }
+        await authAPI.register(name, email, password);
+        // Registration successful, now prompt login
+        alert('Account created successfully! Please login.');
+        setIsLogin(true);
+        setPassword('');
+        setName('');
       }
     } catch (err) {
       console.error('Login error:', err);
@@ -64,7 +49,7 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {isLogin ? 'Login to Splitwise' : 'Join Splitwise'}
+            {isLogin ? 'Login to Hisab' : 'Join Hisab'}
           </h2>
           <button
             onClick={onClose}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { groupAPI } from '../api';
+import { groupAPI, friendsAPI, expenseAPI, activityAPI } from '../api';
 
 /**
  * Get emoji icon based on expense description
@@ -106,47 +106,46 @@ export const useData = (user, currency) => {
 
       // Load friends from API
       try {
-        const friendsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/friends/`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        
-        if (friendsResponse.ok) {
-          const friendsData = await friendsResponse.json();
-          
-          // Calculate balance with each friend across all groups
-          const friendsWithBalances = friendsData.map(friend => {
-            let totalBalance = 0;
-            
-            groupsWithBalances.forEach(group => {
-              if (group.balanceData) {
-                group.balanceData.balances.forEach(balance => {
-                  if (balance.user_id === friend.id) {
-                    // User's balance vs this person (positive = they owe you, negative = you owe them)
-                    totalBalance -= balance.balance;
-                  }
-                });
-              }
-            });
-            
-            return {
-              id: friend.id,
-              name: friend.name,
-              email: friend.email,
-              balance: totalBalance,
-              status: 'joined'
-            };
+        const friendsData = await friendsAPI.getFriends();
+
+        // Calculate balance with each friend across all groups
+        const friendsWithBalances = friendsData.map(friend => {
+          let totalBalance = 0;
+
+          groupsWithBalances.forEach(group => {
+            if (group.balanceData) {
+              group.balanceData.balances.forEach(balance => {
+                if (balance.user_id === friend.id) {
+                  // NOTE: This is NOT true pairwise balance; it is based on the friend's net position in each group.
+                  // Kept as-is to avoid changing product semantics in this refactor.
+                  totalBalance -= balance.balance;
+                }
+              });
+            }
           });
-          
-          setFriends(friendsWithBalances);
-        } else {
-          console.error('Failed to load friends from API');
-          setFriends([]);
-        }
+
+          return {
+            id: friend.id,
+            name: friend.name,
+            email: friend.email,
+            balance: totalBalance,
+            status: 'joined'
+          };
+        });
+
+        setFriends(friendsWithBalances);
       } catch (error) {
         console.error('Error loading friends:', error);
         setFriends([]);
+      }
+
+      // Load activity from API
+      try {
+        const activityData = await activityAPI.getActivity();
+        setActivities(activityData || []);
+      } catch (error) {
+        console.error('Error loading activity:', error);
+        setActivities([]);
       }
 
       // Return the loaded groups so they can be used immediately
@@ -187,27 +186,19 @@ export const useData = (user, currency) => {
             let splits = [];
             
             try {
-              const splitsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/expenses/${expense.id}/splits`, {
-                headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-              });
-              
-              if (splitsResponse.ok) {
-                const splitsData = await splitsResponse.json();
-                splits = splitsData.splits || [];
-                
-                // Calculate youOwe and youAreOwed
-                const userSplit = splits.find(s => s.user_id === user.id);
-                const userSplitAmount = userSplit ? userSplit.amount : 0;
-                
-                if (paidByCurrentUser) {
-                  // User paid, so they are owed (amount - their share)
-                  youAreOwed = expense.amount - userSplitAmount;
-                } else {
-                  // User didn't pay, so they owe their share
-                  youOwe = userSplitAmount;
-                }
+              const splitsData = await expenseAPI.getExpenseSplits(expense.id);
+              splits = splitsData.splits || [];
+
+              // Calculate youOwe and youAreOwed
+              const userSplit = splits.find(s => s.user_id === user.id);
+              const userSplitAmount = userSplit ? userSplit.amount : 0;
+
+              if (paidByCurrentUser) {
+                // User paid, so they are owed (amount - their share)
+                youAreOwed = expense.amount - userSplitAmount;
+              } else {
+                // User didn't pay, so they owe their share
+                youOwe = userSplitAmount;
               }
             } catch (error) {
               console.error(`Failed to load splits for expense ${expense.id}:`, error);

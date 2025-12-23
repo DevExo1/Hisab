@@ -5,3 +5,4 @@ export { Groups } from './Groups';
 export { GroupDetails } from './GroupDetails';
 export { Friends } from './Friends';
 export { Activity } from './Activity';
+export { SettlementView } from './SettlementView';

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CURRENCIES } from '../../utils/currency';
 
-export const EditGroupModal = ({ isOpen, onClose, onSubmit, darkMode, group, friends = [] }) => {
+export const EditGroupModal = ({ isOpen, onClose, onSubmit, darkMode, group, friends = [], currentUser }) => {
   const [groupName, setGroupName] = useState('');
-  const [selectedFriends, setSelectedFriends] = useState([]);
+  const [selectedFriendIds, setSelectedFriendIds] = useState([]);
   const [currency, setCurrency] = useState('USD');
 
   // Update local state when group prop changes
@@ -11,27 +11,39 @@ export const EditGroupModal = ({ isOpen, onClose, onSubmit, darkMode, group, fri
     if (group) {
       setGroupName(group.name || '');
       setCurrency(group.currency || 'USD');
-      // Filter out 'You' and extract member names
-      const memberNames = group.members
-        ?.filter(member => member !== 'You' && member.name !== 'You')
-        .map(member => typeof member === 'string' ? member : member.name) || [];
-      setSelectedFriends(memberNames);
+      // Extract current member ids (excluding current user)
+      const currentUserId = currentUser?.id;
+      const memberIds = (group.members || [])
+        .filter((m) => {
+          if (!m) return false;
+          if (m === 'You') return false;
+          if (typeof m === 'object' && m.name === 'You') return false;
+          if (typeof m === 'object' && Number.isFinite(currentUserId) && m.id === currentUserId) return false;
+          return typeof m === 'object' && Number.isFinite(m.id);
+        })
+        .map((m) => m.id);
+      setSelectedFriendIds(memberIds);
     } else {
       // Clear form when modal closes (group becomes null)
       setGroupName('');
-      setSelectedFriends([]);
+      setSelectedFriendIds([]);
       setCurrency('USD');
     }
-  }, [group]);
+  }, [group, currentUser]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (groupName) {
+      const currentUserId = currentUser?.id;
+      const member_ids = [currentUserId, ...selectedFriendIds]
+        .map((id) => parseInt(id, 10))
+        .filter((n) => Number.isFinite(n));
+
       onSubmit({
         ...group,
         name: groupName,
-        members: ['You', ...selectedFriends],
-        currency: currency
+        currency: currency,
+        member_ids
       });
       onClose();
     }
@@ -101,12 +113,12 @@ export const EditGroupModal = ({ isOpen, onClose, onSubmit, darkMode, group, fri
                 <label key={friend.id} className="flex items-center space-x-2">
                   <input
                     type="checkbox"
-                    checked={selectedFriends.includes(friend.name)}
+                    checked={selectedFriendIds.includes(friend.id)}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedFriends([...selectedFriends, friend.name]);
+                        setSelectedFriendIds([...selectedFriendIds, friend.id]);
                       } else {
-                        setSelectedFriends(selectedFriends.filter(f => f !== friend.name));
+                        setSelectedFriendIds(selectedFriendIds.filter((id) => id !== friend.id));
                       }
                     }}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"

@@ -38,25 +38,6 @@ export const Dashboard = ({
         </div>
       </div>
 
-      {/* How Friends Login Info */}
-      <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-sky-50 border-sky-200'} rounded-2xl border p-6 shadow-lg hover-lift`}>
-        <h3 className={`font-bold text-lg heading-font mb-3 ${darkMode ? 'text-sky-200' : 'text-sky-800'}`}>
-          🤝 How Friends Join EmergentSplit
-        </h3>
-        <div className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'} space-y-2.5`}>
-          <p><strong>1. Invitation:</strong> When you add a friend, they receive an email invitation</p>
-          <p><strong>2. Account Creation:</strong> They click the link and create their Splitwise account</p>
-          <p><strong>3. Instant Access:</strong> Once joined, they can see shared expenses and add their own</p>
-          <p><strong>4. Real-time Sync:</strong> All balances and expenses sync automatically across accounts</p>
-        </div>
-        <button
-          onClick={() => setShowLogin(true)}
-          className="mt-4 px-5 py-2.5 gradient-teal text-white rounded-xl text-sm font-semibold heading-font shadow-md hover:shadow-lg transition-all hover:scale-105"
-        >
-          See Login Experience
-        </button>
-      </div>
-
       {/* Recent Expenses */}
       <div>
         <div className="flex justify-between items-center mb-5">

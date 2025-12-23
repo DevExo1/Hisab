@@ -12,15 +12,6 @@ export const FriendCard = ({ friend, darkMode, currency }) => {
           <div>
             <h3 className={`font-semibold heading-font ${darkMode ? 'text-white' : 'text-slate-900'}`}>{friend.name}</h3>
             <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'} mt-0.5`}>{friend.email}</p>
-            {friend.status && (
-              <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${friend.status === 'joined' ? 'text-gradient-teal' : 'text-gradient-warm'}`}>
-                {friend.status === 'joined' ? (
-                  <><span className="pulse-dot">✓</span> Joined Splitwise</>
-                ) : (
-                  <><span className="pulse-dot">⏳</span> Invitation sent</>
-                )}
-              </p>
-            )}
           </div>
         </div>
         <div className="text-right">

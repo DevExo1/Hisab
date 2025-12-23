@@ -12,7 +12,9 @@ export const Groups = ({
   handleEditGroupClick,
   handleAddExpenseToGroup,
   handleViewGroupDetails,
-  handleBackFromGroupDetails
+  handleBackFromGroupDetails,
+  handleOpenSettlement,
+  user
 }) => {
   // If a group is selected, show group details
   if (selectedGroupView) {
@@ -25,6 +27,8 @@ export const Groups = ({
         handleBackFromGroupDetails={handleBackFromGroupDetails}
         handleEditGroupClick={handleEditGroupClick}
         handleAddExpenseToGroup={handleAddExpenseToGroup}
+        handleOpenSettlement={handleOpenSettlement}
+        user={user}
       />
     );
   }
