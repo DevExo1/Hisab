@@ -10,9 +10,7 @@ with a cohesive color theme, interesting typography, and one or two high-impact 
 
 Rule 5: Write a general-purpose solution using standard tools. Don't hard-code test values or add hacky helper scripts just to satisfy tests. If tests look wrong, tell me instead of working around them.
 
-Rule 6: Always open and read the relevant files before suggesting edits. If I mention a path, you must inspect that file first and follow the existing style and
-
-abstractions.
+Rule 6: Always open and read the relevant files before suggesting edits. If I mention a path, you must inspect that file first and follow the existing style and /exitabstractions.
 
 Rule 7: Never speculate about code you haven't opened. Investigate the real files before answering, and don't claim behavior unless you've verified it in the code.
 

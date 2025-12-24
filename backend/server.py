@@ -1072,65 +1072,111 @@ def get_expense_splits(expense_id: int, current_user: User = Depends(get_current
         cursor.close()
 
 @api_router.get("/activity")
-def get_activity(current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
-    """Get recent activity (expenses and settlements) for the current user across all groups."""
+def get_activity(
+    limit: int = 20, 
+    offset: int = 0,
+    current_user: User = Depends(get_current_user), 
+    db_conn = Depends(get_db_connection)
+):
+    """Get recent activity (expenses and settlements) for the current user across all groups with pagination."""
     cursor = db_conn.cursor(dictionary=True)
     try:
-        # Get recent expenses from user's groups
+        # Limit the maximum items per request
+        limit = min(limit, 50)
+        
+        # First, get the total count without fetching all data
         cursor.execute("""
-            SELECT
-                e.id,
-                e.description,
-                e.amount,
-                e.expense_date as date,
-                'expense' as type,
-                e.group_id,
-                g.name as group_name,
-                payer.full_name as paid_by_name,
-                e.paid_by as paid_by_user_id
-            FROM expenses e
-            INNER JOIN groups g ON e.group_id = g.id
-            INNER JOIN group_members gm ON g.id = gm.group_id
-            INNER JOIN users payer ON e.paid_by = payer.id
-            WHERE gm.user_id = %s AND gm.is_active = TRUE
-            ORDER BY e.expense_date DESC
-            LIMIT 20
-        """, (current_user.id,))
+            SELECT COUNT(*) as total FROM (
+                SELECT e.id FROM expenses e
+                INNER JOIN group_members gm ON e.group_id = gm.group_id
+                WHERE gm.user_id = %s AND gm.is_active = TRUE
+                UNION ALL
+                SELECT s.id FROM settlements s
+                INNER JOIN group_members gm ON s.group_id = gm.group_id
+                WHERE gm.user_id = %s AND gm.is_active = TRUE
+            ) as combined
+        """, (current_user.id, current_user.id))
+        total_count = cursor.fetchone()['total']
         
-        expenses = cursor.fetchall()
-        
-        # Get recent settlements from user's groups
+        # Get combined sorted activities using a subquery with LIMIT and OFFSET
         cursor.execute("""
-            SELECT
-                s.id,
-                s.amount,
-                s.settlement_date as date,
-                'settlement' as type,
-                s.group_id,
-                g.name as group_name,
-                payer.full_name as payer_name,
-                payee.full_name as payee_name,
-                s.payer_id,
-                s.payee_id,
-                s.notes
-            FROM settlements s
-            INNER JOIN groups g ON s.group_id = g.id
-            INNER JOIN group_members gm ON g.id = gm.group_id
-            INNER JOIN users payer ON s.payer_id = payer.id
-            INNER JOIN users payee ON s.payee_id = payee.id
-            WHERE gm.user_id = %s AND gm.is_active = TRUE
-            ORDER BY s.settlement_date DESC
-            LIMIT 20
-        """, (current_user.id,))
+            SELECT * FROM (
+                SELECT
+                    e.id,
+                    e.description,
+                    e.amount,
+                    e.expense_date as date,
+                    'expense' as type,
+                    e.group_id,
+                    g.name as group_name,
+                    payer.full_name as paid_by_name,
+                    e.paid_by as paid_by_user_id,
+                    COUNT(DISTINCT es.user_id) as participant_count,
+                    NULL as payer_name,
+                    NULL as payee_name,
+                    NULL as payer_id,
+                    NULL as payee_id,
+                    NULL as notes
+                FROM expenses e
+                INNER JOIN groups g ON e.group_id = g.id
+                INNER JOIN group_members gm ON g.id = gm.group_id
+                INNER JOIN users payer ON e.paid_by = payer.id
+                LEFT JOIN expense_splits es ON e.id = es.expense_id
+                WHERE gm.user_id = %s AND gm.is_active = TRUE
+                GROUP BY e.id, e.description, e.amount, e.expense_date, e.group_id, 
+                         g.name, payer.full_name, e.paid_by
+                
+                UNION ALL
+                
+                SELECT
+                    s.id,
+                    NULL as description,
+                    s.amount,
+                    s.settlement_date as date,
+                    'settlement' as type,
+                    s.group_id,
+                    g.name as group_name,
+                    NULL as paid_by_name,
+                    NULL as paid_by_user_id,
+                    NULL as participant_count,
+                    payer.full_name as payer_name,
+                    payee.full_name as payee_name,
+                    s.payer_id,
+                    s.payee_id,
+                    s.notes
+                FROM settlements s
+                INNER JOIN groups g ON s.group_id = g.id
+                INNER JOIN group_members gm ON g.id = gm.group_id
+                INNER JOIN users payer ON s.payer_id = payer.id
+                INNER JOIN users payee ON s.payee_id = payee.id
+                WHERE gm.user_id = %s AND gm.is_active = TRUE
+            ) as combined_activity
+            ORDER BY date DESC
+            LIMIT %s OFFSET %s
+        """, (current_user.id, current_user.id, limit, offset))
         
-        settlements = cursor.fetchall()
+        activities = cursor.fetchall()
         
-        # Combine and sort by date
-        all_activity = expenses + settlements
-        all_activity.sort(key=lambda x: x['date'], reverse=True)
+        # For each expense, get the list of participants
+        for activity in activities:
+            if activity['type'] == 'expense':
+                cursor.execute("""
+                    SELECT u.full_name as user_name, es.amount
+                    FROM expense_splits es
+                    INNER JOIN users u ON es.user_id = u.id
+                    WHERE es.expense_id = %s
+                    ORDER BY u.full_name
+                """, (activity['id'],))
+                activity['participants'] = cursor.fetchall()
         
-        # Return top 50 items
-        return all_activity[:50]
+        # Return paginated results with metadata
+        return {
+            "items": activities,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_count
+        }
     finally:
         cursor.close()
 

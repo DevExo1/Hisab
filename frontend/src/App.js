@@ -123,7 +123,6 @@ function App() {
 
       alert('Expense added successfully!');
     } catch (error) {
-      console.error('Failed to add expense:', error);
       alert('Failed to add expense. Please try again.');
     }
   };
@@ -153,7 +152,6 @@ function App() {
 
       alert('Group created successfully!');
     } catch (error) {
-      console.error('Failed to create group:', error);
       alert('Failed to create group. Please try again.');
     }
   };
@@ -163,10 +161,6 @@ function App() {
    */
   const handleEditGroup = async (groupData) => {
     try {
-      console.log('handleEditGroup called with:', groupData);
-      console.log('Available friends:', friends);
-      console.log('Current user:', user);
-
       // Prefer explicit member_ids if provided by the modal (more reliable than name matching)
       let memberIds = null;
       if (Array.isArray(groupData.member_ids) && groupData.member_ids.length > 0) {
@@ -182,18 +176,13 @@ function App() {
             const friend = friends.find(f => f.name === memberName);
             if (friend) {
               memberIds.push(friend.id);
-            } else {
-              console.warn(`Friend not found: ${memberName}`);
             }
           }
         });
       }
 
-      console.log('Member IDs to send:', memberIds);
-
       // Update group via API with currency
       const response = await groupAPI.updateGroup(groupData.id, groupData.name, memberIds, groupData.currency || 'USD');
-      console.log('Update response:', response);
 
       // Reload data
       await loadAllData();
@@ -202,8 +191,6 @@ function App() {
       setEditingGroup(null);
       setShowEditGroup(false);
     } catch (error) {
-      console.error('Failed to update group:', error);
-      console.error('Error details:', error.response?.data || error.message);
       alert(`Failed to update group: ${error.response?.data?.detail || error.message}`);
     }
   };
@@ -217,7 +204,6 @@ function App() {
       alert(`Friend added successfully! ${result.friend.name} is now your friend.`);
       await loadAllData();
     } catch (error) {
-      console.error('Failed to add friend:', error);
       // Normalize error message for modal
       const message = error?.response?.data?.detail || error?.message || 'Failed to add friend';
       throw new Error(message);
@@ -269,7 +255,6 @@ function App() {
       alert('Profile updated successfully!');
       await loadAllData();
     } catch (error) {
-      console.error('Failed to update profile:', error);
       const message = error?.response?.data?.detail || error?.message || 'Failed to update profile';
       throw new Error(message);
     }

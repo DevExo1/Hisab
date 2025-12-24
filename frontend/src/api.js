@@ -324,26 +324,34 @@ export const settlementAPI = {
 // ============================================
 
 /**
- * Calculate overall balance from groups
- * @param {Array} groups - Array of groups with balances
+ * Calculate overall balance from groups, grouped by currency
+ * @param {Array} groups - Array of groups with balances and currency
  */
 export const calculateOverallBalance = (groups) => {
-  if (!groups || groups.length === 0) return { youOwe: 0, youAreOwed: 0 };
+  if (!groups || groups.length === 0) return { youOwe: {}, youAreOwed: {}, currencies: [] };
   
-  let totalOwed = 0;
-  let totalOwing = 0;
+  const owedByCurrency = {};
+  const owingByCurrency = {};
+  const currencies = new Set();
 
   groups.forEach(group => {
+    const curr = group.currency || 'USD';
+    currencies.add(curr);
+    
+    if (!owedByCurrency[curr]) owedByCurrency[curr] = 0;
+    if (!owingByCurrency[curr]) owingByCurrency[curr] = 0;
+    
     if (group.balance > 0) {
-      totalOwed += group.balance;
+      owedByCurrency[curr] += group.balance;
     } else if (group.balance < 0) {
-      totalOwing += Math.abs(group.balance);
+      owingByCurrency[curr] += Math.abs(group.balance);
     }
   });
 
   return {
-    youOwe: totalOwing,
-    youAreOwed: totalOwed,
+    youOwe: owingByCurrency,
+    youAreOwed: owedByCurrency,
+    currencies: Array.from(currencies),
   };
 };
 

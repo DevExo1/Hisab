@@ -4,18 +4,20 @@
  */
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { Alert } from 'react-native';
 import apiClient from '../api/client';
 import { useAuth } from './AuthContext';
 
 const DataContext = createContext({});
 
 export const DataProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   
   const [friends, setFriends] = useState([]);
   const [groups, setGroups] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [activityMetadata, setActivityMetadata] = useState({ total: 0, hasMore: false });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -36,20 +38,35 @@ export const DataProvider = ({ children }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const [friendsData, groupsData, expensesData, activityData] = await Promise.all([
+      const [friendsData, groupsData, expensesData, activityResponse] = await Promise.all([
         apiClient.getFriends(),
         apiClient.getGroups(),
         apiClient.getExpenses(),
-        apiClient.getActivity(),
+        apiClient.getActivity(20, 0),
       ]);
-      
       setFriends(friendsData);
       setGroups(groupsData);
       setExpenses(expensesData);
-      setActivity(activityData);
+      setActivity(activityResponse.items || activityResponse);
+      setActivityMetadata({
+        total: activityResponse.total || 0,
+        hasMore: activityResponse.has_more || false
+      });
     } catch (err) {
+      // Handle authentication errors
+      if (err.isAuthError) {
+        Alert.alert('Session Expired', err.message, [
+          { text: 'OK', onPress: () => logout() }
+        ]);
+        return;
+      }
+      
+      // Handle network errors
+      if (err.isNetworkError) {
+        Alert.alert('Connection Error', err.message);
+      }
+      
       setError(err.message);
-      console.error('Failed to load data:', err);
     } finally {
       setIsLoading(false);
     }
@@ -114,14 +131,37 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  const loadMoreActivity = async () => {
+    if (!activityMetadata.hasMore) {
+      return { success: false, hasMore: false };
+    }
+    
+    try {
+      const currentOffset = activity.length;
+      const response = await apiClient.getActivity(20, currentOffset);
+      const newItems = response.items || [];
+      setActivity(prev => [...prev, ...newItems]);
+      setActivityMetadata({
+        total: response.total || 0,
+        hasMore: response.has_more || false
+      });
+      
+      return { success: true, hasMore: response.has_more || false };
+    } catch (error) {
+      return { success: false, hasMore: false };
+    }
+  };
+
   const value = {
     friends,
     groups,
     expenses,
     activity,
+    activityMetadata,
     isLoading,
     error,
     refreshData,
+    loadMoreActivity,
     addFriend,
     createGroup,
     updateGroup,

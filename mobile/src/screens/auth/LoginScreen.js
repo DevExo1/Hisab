@@ -2,7 +2,7 @@
  * Login Screen
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,9 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
@@ -26,10 +28,52 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [hasInternet, setHasInternet] = useState(true);
+  const [checkingConnection, setCheckingConnection] = useState(true);
+
+  // Check internet connection on mount and when screen is focused
+  useEffect(() => {
+    checkInternetConnection();
+    const interval = setInterval(checkInternetConnection, 10000); // Check every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const checkInternetConnection = async () => {
+    try {
+      // Try to fetch from a reliable endpoint
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      await fetch('https://www.google.com', { 
+        method: 'HEAD',
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeoutId);
+      setHasInternet(true);
+    } catch (error) {
+      setHasInternet(false);
+    } finally {
+      setCheckingConnection(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    // Check internet connection before attempting login
+    if (!hasInternet) {
+      Alert.alert(
+        'No Internet Connection',
+        'Please check your internet connection and try again.',
+        [
+          { text: 'Retry', onPress: () => checkInternetConnection() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
       return;
     }
 
@@ -38,7 +82,19 @@ export default function LoginScreen({ navigation }) {
     setIsLoading(false);
 
     if (!result.success) {
-      Alert.alert('Login Failed', result.error || 'Invalid credentials');
+      // Check if it's a network error
+      if (result.error && result.error.includes('network')) {
+        Alert.alert(
+          'Connection Error',
+          'Unable to connect to the server. Please check your internet connection.',
+          [
+            { text: 'Retry', onPress: () => handleLogin() },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+      } else {
+        Alert.alert('Login Failed', result.error || 'Invalid credentials');
+      }
     }
   };
 
@@ -48,12 +104,50 @@ export default function LoginScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={[styles.title, { color: theme.text }]}>
-          Welcome to Hisab
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          Group Accounts Manager
-        </Text>
+        {/* Logo and Branding */}
+        <View style={styles.brandingContainer}>
+          <View style={styles.logoWrapper}>
+            <Image 
+              source={require('../../../assets/icon.png')} 
+              style={styles.logo}
+              resizeMode="cover"
+            />
+          </View>
+          <Text style={[styles.appName, { color: theme.text }]}>
+            Hisab
+          </Text>
+          <Text style={[styles.tagline, { color: theme.textSecondary }]}>
+            Group Accounts Manager
+          </Text>
+          <Text style={[styles.welcomeText, { color: theme.text }]}>
+            {isLoading ? 'Logging in...' : 'Welcome back'}
+          </Text>
+        </View>
+
+        {/* Internet Connection Status */}
+        {!checkingConnection && (
+          <View style={[
+            styles.connectionStatus,
+            { backgroundColor: hasInternet ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }
+          ]}>
+            <Ionicons 
+              name={hasInternet ? 'wifi-sharp' : 'wifi-outline'} 
+              size={16} 
+              color={hasInternet ? '#10B981' : '#EF4444'} 
+            />
+            <Text style={[
+              styles.connectionText,
+              { color: hasInternet ? '#10B981' : '#EF4444' }
+            ]}>
+              {hasInternet ? 'Connected' : 'No Internet Connection'}
+            </Text>
+            {!hasInternet && (
+              <TouchableOpacity onPress={checkInternetConnection} style={styles.retryButton}>
+                <Text style={[styles.retryText, { color: '#EF4444' }]}>Retry</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         <View style={styles.form}>
           <TextInput
@@ -118,6 +212,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: SPACING.lg,
   },
+  brandingContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  logoWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+  },
+  appName: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  tagline: {
+    fontSize: FONT_SIZES.sm,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  welcomeText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   title: {
     fontSize: FONT_SIZES.xxxl,
     fontWeight: 'bold',
@@ -127,7 +257,29 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: FONT_SIZES.md,
     textAlign: 'center',
-    marginBottom: SPACING.xxl,
+    marginBottom: SPACING.lg,
+  },
+  connectionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.lg,
+  },
+  connectionText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    marginLeft: SPACING.xs,
+  },
+  retryButton: {
+    marginLeft: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  retryText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   form: {
     // gap not fully supported, use marginBottom on children instead

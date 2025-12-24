@@ -8,8 +8,8 @@ export const Header = ({ user, darkMode, toggleDarkMode, currency, setCurrency, 
   return (
     <header className={`${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b px-4 py-4 flex items-center justify-between shadow-sm`}>
       <div className="flex items-center space-x-3">
-        <div className="w-10 h-10 gradient-teal rounded-xl flex items-center justify-center shadow-lg icon-wiggle">
-          <span className="text-white font-bold text-lg heading-font">₹</span>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg icon-wiggle overflow-hidden">
+          <img src="/favicon.png" alt="Hisab Logo" className="w-full h-full object-cover" />
         </div>
         <div>
           <h1 className={`text-2xl font-bold heading-font ${darkMode ? 'text-white' : 'text-slate-900'}`}>

@@ -32,7 +32,7 @@ export const GroupDetails = ({
       const data = await groupAPI.getGroupBalances(selectedGroupView.id);
       setBalanceData(data);
     } catch (error) {
-      console.error('Failed to load balances:', error);
+
     } finally {
       setIsLoadingBalances(false);
     }
@@ -44,7 +44,7 @@ export const GroupDetails = ({
       const data = await groupAPI.getGroupSettlements(selectedGroupView.id);
       setSettlements(data || []);
     } catch (error) {
-      console.error('Failed to load settlements:', error);
+
       // Set empty array on error so UI still works
       setSettlements([]);
     } finally {

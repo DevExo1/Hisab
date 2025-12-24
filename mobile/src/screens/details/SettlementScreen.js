@@ -83,7 +83,6 @@ export default function SettlementScreen({ route, navigation }) {
         setSimplifiedSettlements(sortedSettlements);
       }
     } catch (error) {
-      console.error('Failed to load settlement data:', error);
       Alert.alert('Error', 'Failed to load settlement data');
     } finally {
       setIsLoading(false);

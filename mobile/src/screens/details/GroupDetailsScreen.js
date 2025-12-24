@@ -60,11 +60,9 @@ export default function GroupDetailsScreen({ route, navigation }) {
         const settlementsData = await apiClient.getGroupSettlements(groupId);
         setSettlements(settlementsData || []);
       } catch (settlementError) {
-        console.log('Could not load settlements:', settlementError);
         setSettlements([]);
       }
     } catch (error) {
-      console.error('Failed to load group details:', error);
       // If token expired, show alert
       if (error.message && error.message.includes('credentials')) {
         Alert.alert(
@@ -104,7 +102,6 @@ export default function GroupDetailsScreen({ route, navigation }) {
       await refreshData();
       return { success: true };
     } catch (error) {
-      console.error('Failed to update group:', error);
       throw error;
     }
   };

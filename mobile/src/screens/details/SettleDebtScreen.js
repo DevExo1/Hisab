@@ -79,7 +79,6 @@ export default function SettleDebtScreen({ route, navigation }) {
         ]
       );
     } catch (err) {
-      console.error('Failed to record settlement:', err);
       setError(err.message || 'Failed to record settlement');
     } finally {
       setIsLoading(false);

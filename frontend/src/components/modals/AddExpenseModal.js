@@ -35,10 +35,10 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
   // Initialize selected friends from group members when modal opens
   useEffect(() => {
     if (isOpen && selectedGroup) {
-      console.log('Modal opened with selectedGroup:', selectedGroup);
-      console.log('Available friends:', availableFriends);
+
+
       const groupFriendNames = availableFriends.map(f => f.name);
-      console.log('Setting selected friends to:', groupFriendNames);
+
       setSelectedFriends(groupFriendNames.length > 0 ? [groupFriendNames[0]] : []);
     }
   }, [isOpen, selectedGroup]);
@@ -98,12 +98,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
       onClose();
     } else {
       // Debug: log what's missing
-      console.log('Form validation failed:', {
-        description: !!description,
-        amount: !!amount,
-        effectiveGroupId: !!effectiveGroupId,
-        groupsLength: groups.length
-      });
+
     }
   };
 

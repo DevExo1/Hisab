@@ -35,7 +35,6 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
         setName('');
       }
     } catch (err) {
-      console.error('Login error:', err);
       setError('An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
@@ -47,16 +46,28 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md`}>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {isLogin ? 'Login to Hisab' : 'Join Hisab'}
-          </h2>
-          <button
-            onClick={onClose}
-            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-          >
-            ✕
-          </button>
+        {/* Logo and Branding */}
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg mb-4 overflow-hidden">
+            <img src="/favicon.png" alt="Hisab Logo" className="w-full h-full object-cover" />
+          </div>
+          <h1 className={`text-3xl font-bold heading-font mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Hisab
+          </h1>
+          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
+            Group Accounts Manager
+          </p>
+          <div className="flex items-center justify-between w-full">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              {isLogin ? 'Login' : 'Sign Up'}
+            </h2>
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

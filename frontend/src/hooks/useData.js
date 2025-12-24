@@ -48,17 +48,12 @@ export const useData = (user, currency) => {
    */
   const loadAllData = async () => {
     try {
-      console.log('loadAllData started');
       setLoading(true);
       const loadedGroups = await loadGroups();
-      console.log('Groups loaded, now loading expenses');
       await loadExpenses(loadedGroups);
-      console.log('All data loaded successfully');
     } catch (error) {
-      console.error('Failed to load data:', error);
       setError('Failed to load data. Please refresh the page.');
     } finally {
-      console.log('Setting loading to false');
       setLoading(false);
     }
   };
@@ -68,9 +63,7 @@ export const useData = (user, currency) => {
    */
   const loadGroups = async () => {
     try {
-      console.log('Loading groups, current user:', user);
       const groupsData = await groupAPI.getGroups();
-      console.log('Groups loaded:', groupsData);
 
       // Load balances for each group
       const groupsWithBalances = await Promise.all(
@@ -91,7 +84,6 @@ export const useData = (user, currency) => {
               currency: group.currency || currency,
             };
           } catch (error) {
-            console.error(`Failed to load balance for group ${group.id}:`, error);
             return {
               ...group,
               balance: 0,
@@ -135,7 +127,6 @@ export const useData = (user, currency) => {
 
         setFriends(friendsWithBalances);
       } catch (error) {
-        console.error('Error loading friends:', error);
         setFriends([]);
       }
 
@@ -144,7 +135,6 @@ export const useData = (user, currency) => {
         const activityData = await activityAPI.getActivity();
         setActivities(activityData || []);
       } catch (error) {
-        console.error('Error loading activity:', error);
         setActivities([]);
       }
 
@@ -152,7 +142,6 @@ export const useData = (user, currency) => {
       return groupsWithBalances;
 
     } catch (error) {
-      console.error('Failed to load groups:', error);
       throw error;
     }
   };
@@ -164,9 +153,7 @@ export const useData = (user, currency) => {
   const loadExpenses = async (groupsToLoad = null) => {
     try {
       const groupsArray = groupsToLoad || groups;
-      console.log('Loading expenses, user:', user, 'groups:', groupsArray.length);
       if (!user || groupsArray.length === 0) {
-        console.log('Skipping expenses load - no user or groups');
         return;
       }
 
@@ -201,7 +188,7 @@ export const useData = (user, currency) => {
                 youOwe = userSplitAmount;
               }
             } catch (error) {
-              console.error(`Failed to load splits for expense ${expense.id}:`, error);
+              // Failed to load splits, continue without them
             }
 
             return {
@@ -222,7 +209,7 @@ export const useData = (user, currency) => {
 
           allExpenses.push(...formattedExpenses);
         } catch (error) {
-          console.error(`Failed to load expenses for group ${group.id}:`, error);
+          // Failed to load expenses for this group, continue with others
         }
       }
 
@@ -231,7 +218,6 @@ export const useData = (user, currency) => {
 
       setExpenses(allExpenses);
     } catch (error) {
-      console.error('Failed to load expenses:', error);
       throw error;
     }
   };

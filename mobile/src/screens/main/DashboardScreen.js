@@ -13,7 +13,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
-  Pressable
+  Pressable,
+  Image
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -39,24 +40,32 @@ export default function DashboardScreen({ navigation }) {
     setRefreshing(false);
   }, [refreshData]);
 
-  // Calculate overall balance from groups
+  // Calculate overall balance from groups, grouped by currency
   const calculateOverallBalance = () => {
-    if (!groups || groups.length === 0) return { youOwe: 0, youAreOwed: 0 };
+    if (!groups || groups.length === 0) return { youOwe: {}, youAreOwed: {}, currencies: [] };
     
-    let totalOwed = 0;
-    let totalOwing = 0;
+    const owedByCurrency = {};
+    const owingByCurrency = {};
+    const currencies = new Set();
 
     groups.forEach(group => {
+      const curr = group.currency || 'USD';
+      currencies.add(curr);
+      
+      if (!owedByCurrency[curr]) owedByCurrency[curr] = 0;
+      if (!owingByCurrency[curr]) owingByCurrency[curr] = 0;
+      
       if (group.balance > 0) {
-        totalOwed += group.balance;
+        owedByCurrency[curr] += group.balance;
       } else if (group.balance < 0) {
-        totalOwing += Math.abs(group.balance);
+        owingByCurrency[curr] += Math.abs(group.balance);
       }
     });
 
     return {
-      youOwe: totalOwing,
-      youAreOwed: totalOwed,
+      youOwe: owingByCurrency,
+      youAreOwed: owedByCurrency,
+      currencies: Array.from(currencies),
     };
   };
 
@@ -86,14 +95,13 @@ export default function DashboardScreen({ navigation }) {
       {/* App Header */}
       <View style={[styles.appHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <View style={styles.headerLeft}>
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.primaryDark]}
-            style={styles.logoContainer}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.logoText}>₹</Text>
-          </LinearGradient>
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../../../assets/icon.png')} 
+              style={styles.logoImage}
+              resizeMode="cover"
+            />
+          </View>
           <View>
             <Text style={[styles.appName, { color: theme.text }]}>Hisab</Text>
             <Text style={[styles.appTagline, { color: theme.textSecondary }]}>Group Accounts Manager</Text>
@@ -171,6 +179,7 @@ export default function DashboardScreen({ navigation }) {
         <BalanceCard
           youOwe={overallBalance.youOwe}
           youAreOwed={overallBalance.youAreOwed}
+          currencies={overallBalance.currencies}
           isDarkMode={isDarkMode}
           currency="USD"
         />
@@ -184,7 +193,7 @@ export default function DashboardScreen({ navigation }) {
             end={{ x: 1, y: 1 }}
           >
             <View style={styles.heroContent}>
-              <Text style={styles.heroTitle}>Split expenses beautifully</Text>
+              <Text style={styles.heroTitle}>Split expenses accurately</Text>
               <Text style={styles.heroSubtitle}>Keep track of shared expenses and balances with friends</Text>
             </View>
           </LinearGradient>
@@ -273,14 +282,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.sm,
   },
-  logoText: {
-    fontSize: 20,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: '#FFFFFF',
+  logoImage: {
+    width: 36,
+    height: 36,
   },
   appName: {
     fontSize: FONT_SIZES.lg,

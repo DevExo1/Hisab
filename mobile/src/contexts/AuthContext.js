@@ -31,7 +31,6 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
           // Token might be expired, but keep user logged in
           // They'll be prompted to re-authenticate when making API calls
-          console.log('Could not fetch user data, but keeping session active');
           // Set authenticated with minimal user data
           setIsAuthenticated(true);
           setUser({ id: 'pending', name: 'User' }); // Placeholder
@@ -42,7 +41,6 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(false);
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
       // Still keep user logged in if token exists
       const token = await AsyncStorage.getItem('token');
       if (token) {
@@ -87,7 +85,6 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setIsAuthenticated(false);
     } catch (error) {
-      console.error('Logout failed:', error);
     }
   };
 

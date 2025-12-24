@@ -65,7 +65,7 @@ export const SettlementView = ({
         setSimplifiedSettlements(sortedSettlements);
       }
     } catch (error) {
-      console.error('Failed to load settlements:', error);
+
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +124,7 @@ export const SettlementView = ({
       // Reload settlements
       loadSettlements();
     } catch (error) {
-      console.error('Failed to record settlement:', error);
+
       const message = error?.response?.data?.detail || error?.message || 'Failed to record settlement';
       throw new Error(message);
     }

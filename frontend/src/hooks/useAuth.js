@@ -23,10 +23,8 @@ export const useAuth = () => {
     try {
       setLoading(true);
       const userData = await userAPI.getCurrentUser();
-      console.log('User data loaded:', userData);
       setUser(userData);
     } catch (error) {
-      console.error('Failed to load user data:', error);
       setError('Failed to load user data');
     } finally {
       setLoading(false);
@@ -38,22 +36,21 @@ export const useAuth = () => {
    */
   const login = async (email, password) => {
     try {
-      console.log('Login attempt:', email);
+
       setLoading(true);
       setError(null);
 
       await authAPI.login(email, password);
-      console.log('Login successful, loading user data');
+
       await loadUserData();
-      console.log('User data loaded, login complete');
 
       return true;
     } catch (error) {
-      console.error('Login failed:', error);
+
       setError('Login failed. Please check your credentials.');
       return false;
     } finally {
-      console.log('handleLogin finally block - setting loading to false');
+
       setLoading(false);
     }
   };

@@ -14,7 +14,6 @@ class ApiClient {
 
   async getAuthHeaders() {
     const token = await AsyncStorage.getItem('token');
-    console.log('Getting auth headers, token exists:', !!token);
     return {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -32,16 +31,21 @@ class ApiClient {
     };
 
     try {
-      console.log(`API Request: ${options.method || 'GET'} ${endpoint}`);
       if (options.body) {
-        console.log('Request Body:', options.body);
       }
       
       const response = await fetch(`${this.baseURL}${endpoint}`, config);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`API Error Response (${response.status}):`, errorText);
+        
+        // Handle 401 Unauthorized - token expired or invalid
+        if (response.status === 401) {
+          await this.logout();
+          const error = new Error('Session expired. Please login again.');
+          error.isAuthError = true;
+          throw error;
+        }
         
         let errorData = {};
         try {
@@ -56,8 +60,12 @@ class ApiClient {
 
       return await response.json();
     } catch (error) {
-      console.error('API Request failed:', error.message || error);
-      console.error('Error details:', JSON.stringify(error));
+      // Network errors (no internet, server unreachable)
+      if (error.message === 'Network request failed' || error.message.includes('Failed to fetch')) {
+        const netError = new Error('No internet connection. Please check your network.');
+        netError.isNetworkError = true;
+        throw netError;
+      }
       throw error;
     }
   }
@@ -82,7 +90,6 @@ class ApiClient {
 
     const data = await response.json();
     await AsyncStorage.setItem('token', data.access_token);
-    console.log('Token saved successfully:', data.access_token.substring(0, 20) + '...');
     return data;
   }
 
@@ -117,7 +124,6 @@ class ApiClient {
       // Balance calculation causes HTTP 500 errors
       return friends.map(f => ({ ...f, balance: 0 }));
     } catch (error) {
-      console.error('Failed to fetch friends:', error);
       return [];
     }
   }
@@ -138,7 +144,6 @@ class ApiClient {
     try {
       currentUser = await this.getCurrentUser();
     } catch (error) {
-      console.log('Could not get current user for balance calculation');
     }
     
     // Fetch balances for each group
@@ -163,7 +168,6 @@ class ApiClient {
             settlements: balanceData.settlements || [],
           };
         } catch (error) {
-          console.error(`Failed to fetch balance for group ${group.id}:`, error);
           return {
             ...group,
             balance: 0,
@@ -223,8 +227,8 @@ class ApiClient {
     });
   }
 
-  async getActivity() {
-    return this.request('/api/activity');
+  async getActivity(limit = 20, offset = 0) {
+    return this.request(`/api/activity?limit=${limit}&offset=${offset}`);
   }
 }
 

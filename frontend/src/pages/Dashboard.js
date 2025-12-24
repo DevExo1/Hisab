@@ -19,6 +19,7 @@ export const Dashboard = ({
         currency={currency}
         youOwe={overallBalance.youOwe}
         youAreOwed={overallBalance.youAreOwed}
+        currencies={overallBalance.currencies}
       />
 
       {/* Hero Section */}
@@ -31,7 +32,7 @@ export const Dashboard = ({
           />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-white px-4">
-              <h2 className="text-3xl font-bold heading-font mb-3">Split expenses beautifully</h2>
+              <h2 className="text-3xl font-bold heading-font mb-3">Split expenses accurately</h2>
               <p className="text-lg opacity-95 font-medium">Keep track of shared expenses and balances with friends</p>
             </div>
           </div>
