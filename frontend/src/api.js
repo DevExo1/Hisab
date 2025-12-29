@@ -59,7 +59,7 @@ export const authAPI = {
     formData.append('username', email);
     formData.append('password', password);
     
-    const response = await axios.post(`${API_URL}/token`, formData, {
+    const response = await api.post('/token', formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
