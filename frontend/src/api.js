@@ -5,10 +5,28 @@
 
 import axios from 'axios';
 
-// API_BASE_URL can be set via REACT_APP_BACKEND_URL environment variable
-// In production (Docker), this is set to the backend server IP
-// In development, defaults to 'http://10.10.10.120'
-const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://10.10.10.120';
+// Determine the API URL based on how the frontend is accessed
+// If accessed via https://hisab.exolutus.com, use https://hisabapi.exolutus.com
+// If accessed from local network (10.10.10.x), use local IP
+// Otherwise use environment variable or fallback
+function getAPIBaseURL() {
+  const hostname = window.location.hostname;
+  
+  // If accessed via the domain, use the domain for API
+  if (hostname === 'hisab.exolutus.com') {
+    return 'https://hisabapi.exolutus.com';
+  }
+  
+  // If accessed from local network, use local IP
+  if (hostname.startsWith('10.10.10.') || hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://10.10.10.120';
+  }
+  
+  // Use environment variable if set, otherwise fallback to local IP
+  return process.env.REACT_APP_BACKEND_URL || 'http://10.10.10.120';
+}
+
+const API_BASE_URL = getAPIBaseURL();
 const API_URL = `${API_BASE_URL}/api`;
 
 // Create axios instance with default config

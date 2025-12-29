@@ -14,9 +14,11 @@ RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
 # Copy source code
 COPY frontend/ .
 
-# Build the application with production backend URL
-# Point to the production IP so API calls go directly to the backend
-RUN export REACT_APP_BACKEND_URL=http://10.10.10.120 && if [ -f yarn.lock ]; then yarn build; else npm run build; fi
+# Build the application
+# The frontend will intelligently select API URL based on how it's accessed:
+# - Via hisab.exolutus.com -> uses https://hisabapi.exolutus.com
+# - Via local network (10.10.10.x) -> uses http://10.10.10.120
+RUN if [ -f yarn.lock ]; then yarn build; else npm run build; fi
 
 # Production stage with Nginx
 FROM nginx:alpine
