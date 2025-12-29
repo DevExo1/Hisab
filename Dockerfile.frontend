@@ -1,5 +1,5 @@
 # Frontend Dockerfile for React (Production Build with Nginx)
-FROM node:18-alpine as build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
