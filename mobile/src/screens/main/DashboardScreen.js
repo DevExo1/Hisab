@@ -24,6 +24,7 @@ import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } fro
 import BalanceCard from '../../components/BalanceCard';
 import ExpenseCard from '../../components/ExpenseCard';
 import GroupCard from '../../components/GroupCard';
+import SyncStatusIndicator from '../../components/SyncStatusIndicator';
 
 export default function DashboardScreen({ navigation }) {
   const { isDarkMode } = useTheme();
@@ -96,8 +97,8 @@ export default function DashboardScreen({ navigation }) {
       <View style={[styles.appHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <View style={styles.headerLeft}>
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../../../assets/icon.png')} 
+            <Image
+              source={require('../../../assets/icon.png')}
               style={styles.logoImage}
               resizeMode="cover"
             />
@@ -108,19 +109,22 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
         
-        <TouchableOpacity 
-          style={styles.profileButton}
-          onPress={() => setShowProfileMenu(true)}
-        >
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.primaryDark]}
-            style={styles.profileAvatar}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+        <View style={styles.headerRight}>
+          <SyncStatusIndicator isDarkMode={isDarkMode} />
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => setShowProfileMenu(true)}
           >
-            <Text style={styles.profileInitial}>{user?.name?.charAt(0)?.toUpperCase() || '?'}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.primaryDark]}
+              style={styles.profileAvatar}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.profileInitial}>{user?.name?.charAt(0)?.toUpperCase() || '?'}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Profile Menu Modal */}
@@ -275,6 +279,10 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
   },

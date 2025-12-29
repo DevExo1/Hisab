@@ -1180,6 +1180,194 @@ def get_activity(
     finally:
         cursor.close()
 
+@api_router.get("/sync/changes")
+def get_sync_changes(
+    since: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db_conn = Depends(get_db_connection)
+):
+    """
+    Get data changes since a given timestamp for efficient client synchronization.
+    
+    Args:
+        since: ISO format timestamp (e.g., '2024-12-24T12:00:00Z').
+               If None, returns all data (initial sync).
+    
+    Returns:
+        Dictionary containing:
+        - server_time: Current server timestamp
+        - has_changes: Boolean indicating if any changes exist
+        - changes: Dictionary with modified data (groups, expenses, friends, activity)
+    """
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        server_time = datetime.utcnow()
+        
+        # Parse the 'since' timestamp or use a very old date for initial sync
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                raise HTTPException(status_code=400, detail="Invalid timestamp format. Use ISO format.")
+        else:
+            # Initial sync - get all data from epoch
+            since_dt = datetime(1970, 1, 1)
+        
+        changes = {
+            "groups": [],
+            "expenses": [],
+            "friends": [],
+            "activity": []
+        }
+        
+        has_changes = False
+        
+        # Get groups modified since timestamp
+        cursor.execute("""
+            SELECT g.id, g.name, g.created_by, g.currency, g.updated_at
+            FROM groups g
+            INNER JOIN group_members gm ON g.id = gm.group_id
+            WHERE gm.user_id = %s
+            AND gm.is_active = TRUE
+            AND g.updated_at > %s
+            ORDER BY g.updated_at DESC
+        """, (current_user.id, since_dt))
+        
+        modified_groups = cursor.fetchall()
+        
+        # For each modified group, fetch its members and balances
+        for group in modified_groups:
+            cursor.execute("""
+                SELECT u.id, u.email, u.full_name as name
+                FROM users u
+                INNER JOIN group_members gm ON u.id = gm.user_id
+                WHERE gm.group_id = %s AND gm.is_active = TRUE
+            """, (group['id'],))
+            group['members'] = cursor.fetchall()
+            
+            # Get user's balance in this group
+            cursor.execute("""
+                SELECT
+                    COALESCE(paid.total_paid, 0) - COALESCE(owed.total_owed, 0) as balance
+                FROM (SELECT 1) as dummy
+                LEFT JOIN (
+                    SELECT SUM(amount) as total_paid
+                    FROM expenses
+                    WHERE group_id = %s AND paid_by = %s
+                ) paid ON 1=1
+                LEFT JOIN (
+                    SELECT SUM(es.amount) as total_owed
+                    FROM expense_splits es
+                    INNER JOIN expenses e ON es.expense_id = e.id
+                    WHERE e.group_id = %s AND es.user_id = %s
+                ) owed ON 1=1
+            """, (group['id'], current_user.id, group['id'], current_user.id))
+            
+            balance_result = cursor.fetchone()
+            group['balance'] = float(balance_result['balance']) if balance_result else 0.0
+            
+            changes['groups'].append(group)
+            has_changes = True
+        
+        # Get expenses modified since timestamp
+        cursor.execute("""
+            SELECT e.id, e.description, e.amount, e.paid_by as paid_by_user_id,
+                   e.group_id, e.expense_date, e.updated_at
+            FROM expenses e
+            INNER JOIN group_members gm ON e.group_id = gm.group_id
+            WHERE gm.user_id = %s
+            AND gm.is_active = TRUE
+            AND e.updated_at > %s
+            ORDER BY e.updated_at DESC
+            LIMIT 100
+        """, (current_user.id, since_dt))
+        
+        modified_expenses = cursor.fetchall()
+        if modified_expenses:
+            changes['expenses'] = modified_expenses
+            has_changes = True
+        
+        # Get friends added/modified since timestamp
+        cursor.execute("""
+            SELECT u.id, u.email, u.full_name as name, uf.updated_at
+            FROM users u
+            INNER JOIN user_friends uf ON u.id = uf.friend_id
+            WHERE uf.user_id = %s
+            AND uf.updated_at > %s
+            ORDER BY uf.updated_at DESC
+        """, (current_user.id, since_dt))
+        
+        modified_friends = cursor.fetchall()
+        if modified_friends:
+            changes['friends'] = modified_friends
+            has_changes = True
+        
+        # Get recent activity (last 20 items regardless of timestamp for activity feed)
+        cursor.execute("""
+            SELECT * FROM (
+                SELECT
+                    e.id,
+                    e.description,
+                    e.amount,
+                    e.expense_date as date,
+                    'expense' as type,
+                    e.group_id,
+                    g.name as group_name,
+                    payer.full_name as paid_by_name,
+                    e.paid_by as paid_by_user_id,
+                    NULL as payer_name,
+                    NULL as payee_name,
+                    NULL as payer_id,
+                    NULL as payee_id,
+                    NULL as notes
+                FROM expenses e
+                INNER JOIN groups g ON e.group_id = g.id
+                INNER JOIN group_members gm ON g.id = gm.group_id
+                INNER JOIN users payer ON e.paid_by = payer.id
+                WHERE gm.user_id = %s AND gm.is_active = TRUE
+                AND e.updated_at > %s
+                
+                UNION ALL
+                
+                SELECT
+                    s.id,
+                    NULL as description,
+                    s.amount,
+                    s.settlement_date as date,
+                    'settlement' as type,
+                    s.group_id,
+                    g.name as group_name,
+                    NULL as paid_by_name,
+                    NULL as paid_by_user_id,
+                    payer.full_name as payer_name,
+                    payee.full_name as payee_name,
+                    s.payer_id,
+                    s.payee_id,
+                    s.notes
+                FROM settlements s
+                INNER JOIN groups g ON s.group_id = g.id
+                INNER JOIN group_members gm ON g.id = gm.group_id
+                INNER JOIN users payer ON s.payer_id = payer.id
+                INNER JOIN users payee ON s.payee_id = payee.id
+                WHERE gm.user_id = %s AND gm.is_active = TRUE
+                AND s.updated_at > %s
+            ) as combined_activity
+            ORDER BY date DESC
+            LIMIT 20
+        """, (current_user.id, since_dt, current_user.id, since_dt))
+        
+        recent_activity = cursor.fetchall()
+        if recent_activity:
+            changes['activity'] = recent_activity
+        
+        return {
+            "server_time": server_time.isoformat() + 'Z',
+            "has_changes": has_changes,
+            "changes": changes
+        }
+    finally:
+        cursor.close()
+
 @api_router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
 def register_user_alias(user: UserCreate, db_conn = Depends(get_db_connection)):
     """Alias endpoint for registration (same as POST /api/users/)."""

@@ -173,7 +173,8 @@ export const activityAPI = {
    */
   getActivity: async () => {
     const response = await api.get('/activity');
-    return response.data;
+    // Backend returns {items: [...], total: ...}, but we just need the items array
+    return response.data.items || response.data || [];
   },
 };
 

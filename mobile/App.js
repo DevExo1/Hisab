@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Context Providers
 import { AuthProvider } from './src/contexts/AuthContext';
+import { SyncProvider } from './src/contexts/SyncContext';
 import { DataProvider } from './src/contexts/DataContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 
@@ -20,10 +21,12 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <DataProvider>
-            <AppNavigator />
-            <StatusBar style="auto" />
-          </DataProvider>
+          <SyncProvider>
+            <DataProvider>
+              <AppNavigator />
+              <StatusBar style="auto" />
+            </DataProvider>
+          </SyncProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

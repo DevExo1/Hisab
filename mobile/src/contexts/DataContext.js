@@ -7,11 +7,13 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Alert } from 'react-native';
 import apiClient from '../api/client';
 import { useAuth } from './AuthContext';
+import { useSync } from './SyncContext';
 
 const DataContext = createContext({});
 
 export const DataProvider = ({ children }) => {
   const { isAuthenticated, logout } = useAuth();
+  const { registerSyncCallback } = useSync();
   
   const [friends, setFriends] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -33,6 +35,86 @@ export const DataProvider = ({ children }) => {
       setActivity([]);
     }
   }, [isAuthenticated]);
+
+  // Register for sync updates
+  useEffect(() => {
+    if (!isAuthenticated || !registerSyncCallback) return;
+    
+    const unregister = registerSyncCallback(handleSyncChanges);
+    return () => unregister();
+  }, [isAuthenticated, registerSyncCallback]);
+
+  // Handle incremental sync changes
+  const handleSyncChanges = (changes) => {
+    try {
+      // Merge groups
+      if (changes.groups && changes.groups.length > 0) {
+        setGroups(prevGroups => {
+          const updatedGroups = [...prevGroups];
+          changes.groups.forEach(newGroup => {
+            const index = updatedGroups.findIndex(g => g.id === newGroup.id);
+            if (index >= 0) {
+              updatedGroups[index] = newGroup;
+            } else {
+              updatedGroups.push(newGroup);
+            }
+          });
+          return updatedGroups;
+        });
+      }
+
+      // Merge expenses
+      if (changes.expenses && changes.expenses.length > 0) {
+        setExpenses(prevExpenses => {
+          const updatedExpenses = [...prevExpenses];
+          changes.expenses.forEach(newExpense => {
+            const index = updatedExpenses.findIndex(e => e.id === newExpense.id);
+            if (index >= 0) {
+              updatedExpenses[index] = newExpense;
+            } else {
+              updatedExpenses.unshift(newExpense);
+            }
+          });
+          return updatedExpenses;
+        });
+      }
+
+      // Merge friends
+      if (changes.friends && changes.friends.length > 0) {
+        setFriends(prevFriends => {
+          const updatedFriends = [...prevFriends];
+          changes.friends.forEach(newFriend => {
+            const index = updatedFriends.findIndex(f => f.id === newFriend.id);
+            if (index >= 0) {
+              updatedFriends[index] = newFriend;
+            } else {
+              updatedFriends.push(newFriend);
+            }
+          });
+          return updatedFriends;
+        });
+      }
+
+      // Merge activity
+      if (changes.activity && changes.activity.length > 0) {
+        setActivity(prevActivity => {
+          const updatedActivity = [...prevActivity];
+          changes.activity.forEach(newItem => {
+            const index = updatedActivity.findIndex(
+              a => a.id === newItem.id && a.type === newItem.type
+            );
+            if (index < 0) {
+              updatedActivity.unshift(newItem);
+            }
+          });
+          // Keep only latest 50 items to prevent memory issues
+          return updatedActivity.slice(0, 50);
+        });
+      }
+    } catch (error) {
+      console.error('Error handling sync changes:', error);
+    }
+  };
 
   const loadAllData = async () => {
     setIsLoading(true);

@@ -1,7 +1,10 @@
 import React from 'react';
 import { ActivityItem } from '../components/cards';
 
-export const Activity = ({ darkMode, currency, activities }) => {
+export const Activity = ({ darkMode, currency, activities = [] }) => {
+  // Ensure activities is always an array
+  const activitiesList = Array.isArray(activities) ? activities : [];
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -26,9 +29,15 @@ export const Activity = ({ darkMode, currency, activities }) => {
       </div>
 
       <div className="space-y-3">
-        {activities.map(activity => (
-          <ActivityItem key={activity.id} activity={activity} darkMode={darkMode} currency={currency} />
-        ))}
+        {activitiesList.length > 0 ? (
+          activitiesList.map(activity => (
+            <ActivityItem key={activity.id} activity={activity} darkMode={darkMode} currency={currency} />
+          ))
+        ) : (
+          <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p>No recent activity</p>
+          </div>
+        )}
       </div>
     </div>
   );

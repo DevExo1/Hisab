@@ -212,6 +212,10 @@ class ApiClient {
     return this.request('/api/expenses/');
   }
 
+  async getExpenseSplits(expenseId) {
+    return this.request(`/api/expenses/${expenseId}/splits`);
+  }
+
   async createExpense(expenseData) {
     return this.request('/api/expenses/', {
       method: 'POST',
@@ -229,6 +233,14 @@ class ApiClient {
 
   async getActivity(limit = 20, offset = 0) {
     return this.request(`/api/activity?limit=${limit}&offset=${offset}`);
+  }
+
+  // Sync endpoint
+  async getSyncChanges(sinceTimestamp = null) {
+    const endpoint = sinceTimestamp
+      ? `/api/sync/changes?since=${encodeURIComponent(sinceTimestamp)}`
+      : '/api/sync/changes';
+    return this.request(endpoint);
   }
 }
 

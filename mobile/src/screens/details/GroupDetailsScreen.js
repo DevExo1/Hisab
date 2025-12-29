@@ -21,8 +21,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { formatCurrency } from '../../utils/currency';
-import ExpenseCard from '../../components/ExpenseCard';
-import SettlementCard from '../../components/SettlementCard';
+import ActivityItem from '../../components/ActivityItem';
 import AddExpenseModal from '../../components/AddExpenseModal';
 import EditGroupModal from '../../components/EditGroupModal';
 import apiClient from '../../api/client';
@@ -37,6 +36,7 @@ export default function GroupDetailsScreen({ route, navigation }) {
   const [group, setGroup] = useState(null);
   const [balances, setBalances] = useState(null);
   const [settlements, setSettlements] = useState([]);
+  const [expensesWithSplits, setExpensesWithSplits] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
@@ -62,6 +62,26 @@ export default function GroupDetailsScreen({ route, navigation }) {
       } catch (settlementError) {
         setSettlements([]);
       }
+      
+      // Fetch splits for all group expenses
+      const groupExpenses = allExpenses.filter(exp => exp.group_id === groupId);
+      const expensesWithSplits = await Promise.all(
+        groupExpenses.map(async (expense) => {
+          try {
+            const splitsData = await apiClient.getExpenseSplits(expense.id);
+            return {
+              ...expense,
+              splits: splitsData.splits || []
+            };
+          } catch (error) {
+            // If splits fetch fails, return expense without splits
+            return { ...expense, splits: [] };
+          }
+        })
+      );
+      
+      // Update the expenses in context with splits data
+      setExpensesWithSplits(expensesWithSplits);
     } catch (error) {
       // If token expired, show alert
       if (error.message && error.message.includes('credentials')) {
@@ -130,26 +150,63 @@ export default function GroupDetailsScreen({ route, navigation }) {
     );
   }
 
-  // Filter expenses for this group
-  const groupExpenses = allExpenses.filter(exp => exp.group_id === groupId);
+  // Use expenses with splits data if available, otherwise fall back to allExpenses
+  const groupExpenses = expensesWithSplits.length > 0
+    ? expensesWithSplits
+    : allExpenses.filter(exp => exp.group_id === groupId);
 
-  // Combine expenses and settlements into transactions
+  // Combine expenses and settlements into transactions formatted for display
   const transactions = [
-    ...groupExpenses.map(exp => ({
-      ...exp,
-      type: 'expense',
-      date: exp.expense_date || exp.date
-    })),
-    ...settlements.map(settlement => ({
-      id: `settlement-${settlement.id}`,
-      type: 'settlement',
-      description: settlement.notes || 'Settlement',
-      amount: settlement.amount,
-      date: settlement.settlement_date,
-      payer_id: settlement.payer_id,
-      payee_id: settlement.payee_id,
-      group_id: settlement.group_id
-    }))
+    ...groupExpenses.map(exp => {
+      // Find the payer name from group members
+      const payer = group.members?.find(m => m.id === exp.paid_by_user_id) ||
+                    members.find(m => m.user_id === exp.paid_by_user_id);
+      const payerName = payer ? (payer.user_name || payer.name) :
+                       (exp.paid_by_user_id === user?.id ? 'You' : 'Unknown');
+      
+      // Map splits to participants format
+      const participants = exp.splits?.map(split => {
+        const member = group.members?.find(m => m.id === split.user_id) ||
+                      members.find(m => m.user_id === split.user_id);
+        return {
+          user_id: split.user_id,
+          user_name: member ? (member.user_name || member.name) : 'Unknown',
+          amount: split.amount
+        };
+      }) || [];
+
+      return {
+        ...exp,
+        type: 'expense',
+        date: exp.expense_date || exp.date,
+        paid_by_name: payerName,
+        group_name: group.name,
+        participant_count: exp.splits?.length || 0,
+        participants: participants
+      };
+    }),
+    ...settlements.map(settlement => {
+      // Find payer and payee names
+      const payer = group.members?.find(m => m.id === settlement.payer_id) ||
+                   members.find(m => m.user_id === settlement.payer_id);
+      const payee = group.members?.find(m => m.id === settlement.payee_id) ||
+                   members.find(m => m.user_id === settlement.payee_id);
+      
+      return {
+        id: `settlement-${settlement.id}`,
+        type: 'settlement',
+        description: settlement.notes || 'Settlement',
+        amount: settlement.amount,
+        date: settlement.settlement_date,
+        payer_id: settlement.payer_id,
+        payee_id: settlement.payee_id,
+        payer_name: payer ? (payer.user_name || payer.name) : 'Unknown',
+        payee_name: payee ? (payee.user_name || payee.name) : 'Unknown',
+        group_name: group.name,
+        group_id: settlement.group_id,
+        notes: settlement.notes
+      };
+    })
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   // Calculate totals from expenses
@@ -330,31 +387,14 @@ export default function GroupDetailsScreen({ route, navigation }) {
           </View>
 
           {transactions.length > 0 ? (
-            transactions.map((transaction) => {
-              if (transaction.type === 'settlement') {
-                return (
-                  <SettlementCard
-                    key={transaction.id}
-                    settlement={transaction}
-                    isDarkMode={isDarkMode}
-                    currency={group.currency}
-                    members={members}
-                  />
-                );
-              } else {
-                return (
-                  <ExpenseCard
-                    key={transaction.id}
-                    expense={transaction}
-                    isDarkMode={isDarkMode}
-                    currency={group.currency}
-                    onPress={() => {
-                      // Navigate to expense details if needed
-                    }}
-                  />
-                );
-              }
-            })
+            transactions.map((transaction) => (
+              <ActivityItem
+                key={transaction.id}
+                activity={transaction}
+                theme={theme}
+                isDarkMode={isDarkMode}
+              />
+            ))
           ) : (
             <View style={[styles.emptyExpenses, { backgroundColor: theme.surface }]}>
               <Ionicons name="receipt-outline" size={48} color={theme.textTertiary} style={styles.emptyExpensesIcon} />

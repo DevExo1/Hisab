@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExpenseCard, SettlementCard } from '../components/cards';
+import { ActivityItem } from '../components/cards';
 import { formatCurrency } from '../utils/currency';
 import { groupAPI } from '../api';
 
@@ -56,23 +56,46 @@ export const GroupDetails = ({
 
   const groupExpenses = expenses.filter(exp => exp.groupId === selectedGroupView.id);
   
-  // Combine expenses and settlements into transactions
+  // Combine expenses and settlements into transactions formatted for ActivityItem
   const transactions = [
-    ...groupExpenses.map(exp => ({
-      ...exp,
-      type: 'expense',
-      date: exp.date || exp.expense_date
-    })),
-    ...settlements.map(settlement => ({
-      id: `settlement-${settlement.id}`,
-      type: 'settlement',
-      description: settlement.notes || 'Settlement',
-      amount: settlement.amount,
-      date: settlement.settlement_date,
-      payer_id: settlement.payer_id,
-      payee_id: settlement.payee_id,
-      groupId: settlement.group_id
-    }))
+    ...groupExpenses.map(exp => {
+      // Map splits to participants format expected by ActivityItem
+      const participants = exp.splits?.map(split => ({
+        user_id: split.user_id,
+        user_name: selectedGroupView.members.find(m => m.id === split.user_id)?.name || 'Unknown',
+        amount: split.amount
+      })) || [];
+
+      return {
+        id: exp.id,
+        type: 'expense',
+        description: exp.description,
+        amount: exp.amount,
+        date: exp.date || exp.expense_date,
+        paid_by_name: exp.paidBy, // Already formatted as "You" or member name
+        paid_by_user_id: exp.paidByUserId,
+        group_name: selectedGroupView.name,
+        participant_count: exp.splits?.length || 0,
+        participants: participants
+      };
+    }),
+    ...settlements.map(settlement => {
+      // Find payer and payee names
+      const payer = selectedGroupView.members.find(m => m.id === settlement.payer_id);
+      const payee = selectedGroupView.members.find(m => m.id === settlement.payee_id);
+      return {
+        id: `settlement-${settlement.id}`,
+        type: 'settlement',
+        amount: settlement.amount,
+        date: settlement.settlement_date,
+        payer_name: payer?.name || 'Unknown',
+        payee_name: payee?.name || 'Unknown',
+        payer_id: settlement.payer_id,
+        payee_id: settlement.payee_id,
+        group_name: selectedGroupView.name,
+        notes: settlement.notes
+      };
+    })
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
   
   // Calculate totals
@@ -265,28 +288,14 @@ export const GroupDetails = ({
               <p className="text-sm opacity-75">Click "Add Expense" to create the first expense</p>
             </div>
           ) : (
-            transactions.map(transaction => {
-              if (transaction.type === 'settlement') {
-                return (
-                  <SettlementCard 
-                    key={transaction.id} 
-                    settlement={transaction} 
-                    darkMode={darkMode} 
-                    currency={selectedGroupView.currency || currency}
-                    members={selectedGroupView.members}
-                  />
-                );
-              } else {
-                return (
-                  <ExpenseCard 
-                    key={transaction.id} 
-                    expense={transaction} 
-                    darkMode={darkMode} 
-                    currency={currency} 
-                  />
-                );
-              }
-            })
+            transactions.map(activity => (
+              <ActivityItem
+                key={activity.id}
+                activity={activity}
+                darkMode={darkMode}
+                currency={selectedGroupView.currency || currency}
+              />
+            ))
           )}
         </div>
       </div>

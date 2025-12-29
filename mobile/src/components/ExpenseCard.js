@@ -1,6 +1,6 @@
 /**
  * Expense Card Component
- * Displays a single expense with details
+ * Displays a single expense with details - matches Activity page design
  */
 
 import React from 'react';
@@ -24,7 +24,19 @@ const getExpenseIcon = (description) => {
 
 const formatDate = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const now = new Date();
+  const diffTime = Math.abs(now - date);
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  } else if (diffDays === 1) {
+    return 'Yesterday';
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
 };
 
 export default function ExpenseCard({ expense, isDarkMode = false, currency = 'USD', onPress }) {
@@ -33,46 +45,69 @@ export default function ExpenseCard({ expense, isDarkMode = false, currency = 'U
 
   return (
     <TouchableOpacity 
-      style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border }, SHADOWS.small]}
+      style={[styles.activityCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.content}>
-        {/* Left: Icon and Details */}
-        <View style={styles.leftSection}>
-          <View style={[styles.iconContainer, { backgroundColor: theme.surfaceSecondary }]}>
-            <Ionicons name={icon} size={20} color={COLORS.primary} />
-          </View>
-          
-          <View style={styles.details}>
-            <Text style={[styles.description, { color: theme.text }]} numberOfLines={1}>
+      <View style={styles.cardRow}>
+        {/* Icon */}
+        <View style={[styles.iconContainer, { backgroundColor: '#FED7AA' }]}>
+          <Ionicons name={icon} size={18} color="#EA580C" />
+        </View>
+        
+        {/* Content */}
+        <View style={styles.contentContainer}>
+          <View style={styles.topRow}>
+            <Text style={[styles.description, { color: theme.text }]}>
               {expense.description}
             </Text>
-            <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-              {expense.paid_by_name || 'Unknown'} • {formatDate(expense.expense_date || expense.date)}
+            <Text style={[styles.amount, { color: '#F97316' }]}>
+              {formatCurrency(expense.amount, currency)}
             </Text>
-            {expense.group_name && (
-              <Text style={[styles.groupText, { color: theme.textTertiary }]} numberOfLines={1}>
-                {expense.group_name}
-              </Text>
-            )}
           </View>
-        </View>
+          
+          <View style={styles.detailsRow}>
+            <View style={styles.detailsLeft}>
+              <View style={styles.infoRow}>
+                <Ionicons name="person-sharp" size={12} color={theme.textSecondary} />
+                <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+                  {expense.paid_by_name || 'Unknown'}
+                </Text>
+              </View>
+              {expense.group_name && (
+                <View style={styles.infoRow}>
+                  <Ionicons name="people-sharp" size={12} color={theme.textSecondary} />
+                  <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+                    {expense.group_name}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.detailsRight}>
+              <Text style={[styles.dateText, { color: theme.textSecondary }]}>
+                {formatDate(expense.expense_date || expense.date)}
+              </Text>
+            </View>
+          </View>
 
-        {/* Right: Amount */}
-        <View style={styles.rightSection}>
-          <Text style={[styles.amount, { color: theme.text }]}>
-            {formatCurrency(expense.amount, currency)}
-          </Text>
-          {expense.youOwe > 0 && (
-            <Text style={[styles.statusText, { color: COLORS.coral }]}>
-              You owe {formatCurrency(expense.youOwe, currency)}
-            </Text>
-          )}
-          {expense.youAreOwed > 0 && (
-            <Text style={[styles.statusText, { color: COLORS.primary }]}>
-              Owed {formatCurrency(expense.youAreOwed, currency)}
-            </Text>
+          {/* Optional: Show you owe / owed info */}
+          {(expense.youOwe > 0 || expense.youAreOwed > 0) && (
+            <View style={styles.statusRow}>
+              {expense.youOwe > 0 && (
+                <View style={[styles.statusBadge, { backgroundColor: isDarkMode ? '#991B1B' : '#FEE2E2' }]}>
+                  <Text style={[styles.statusText, { color: isDarkMode ? '#FCA5A5' : '#DC2626' }]}>
+                    You owe {formatCurrency(expense.youOwe, currency)}
+                  </Text>
+                </View>
+              )}
+              {expense.youAreOwed > 0 && (
+                <View style={[styles.statusBadge, { backgroundColor: isDarkMode ? '#065F46' : '#D1FAE5' }]}>
+                  <Text style={[styles.statusText, { color: isDarkMode ? '#6EE7B7' : '#059669' }]}>
+                    Owed {formatCurrency(expense.youAreOwed, currency)}
+                  </Text>
+                </View>
+              )}
+            </View>
           )}
         </View>
       </View>
@@ -81,57 +116,81 @@ export default function ExpenseCard({ expense, isDarkMode = false, currency = 'U
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: BORDER_RADIUS.md,
+  activityCard: {
+    borderRadius: 10,
     borderWidth: 1,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
   },
-  content: {
+  cardRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  leftSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: SPACING.md,
+    gap: SPACING.sm,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: BORDER_RADIUS.sm,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: SPACING.sm,
+    marginTop: 2,
   },
-  details: {
+  contentContainer: {
     flex: 1,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.xs,
   },
   description: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    marginBottom: 2,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-    marginBottom: 2,
-  },
-  groupText: {
-    fontSize: FONT_SIZES.xs,
-    marginTop: 2,
-  },
-  rightSection: {
-    alignItems: 'flex-end',
+    fontWeight: '600',
+    flex: 1,
+    marginRight: SPACING.sm,
   },
   amount: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
-    marginBottom: 2,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  detailsLeft: {
+    flex: 1,
+    gap: SPACING.xs / 2,
+  },
+  detailsRight: {
+    alignItems: 'flex-end',
+    gap: SPACING.xs / 2,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs / 2,
+  },
+  infoText: {
+    fontSize: FONT_SIZES.xs,
+    flex: 1,
+  },
+  dateText: {
+    fontSize: FONT_SIZES.xs,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    flexWrap: 'wrap',
+  },
+  statusBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   statusText: {
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontWeight: '600',
   },
 });
