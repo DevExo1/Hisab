@@ -1,0 +1,55 @@
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*
+.git
+.gitignore
+
+# Node modules
+node_modules
+npm-debug.log
+
+# Environment files
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+*.test.js
+*.spec.js
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Build artifacts (backend specific)
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
