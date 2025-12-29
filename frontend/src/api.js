@@ -6,9 +6,9 @@
 import axios from 'axios';
 
 // API_BASE_URL can be set via REACT_APP_BACKEND_URL environment variable
-// In production (Docker), this is set to '/' so requests are proxied through Nginx
-// In development, defaults to 'http://localhost:8000'
-const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+// In production (Docker), this is set to the backend server IP
+// In development, defaults to 'http://10.10.10.120'
+const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://10.10.10.120';
 const API_URL = `${API_BASE_URL}/api`;
 
 // Create axios instance with default config

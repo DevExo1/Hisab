@@ -15,8 +15,8 @@ RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
 COPY frontend/ .
 
 # Build the application with production backend URL
-# Using empty string so API calls use relative paths and go through nginx proxy
-RUN export REACT_APP_BACKEND_URL= && if [ -f yarn.lock ]; then yarn build; else npm run build; fi
+# Point to the production IP so API calls go directly to the backend
+RUN export REACT_APP_BACKEND_URL=http://10.10.10.120 && if [ -f yarn.lock ]; then yarn build; else npm run build; fi
 
 # Production stage with Nginx
 FROM nginx:alpine
