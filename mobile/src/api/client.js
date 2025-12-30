@@ -5,7 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://10.10.10.150:8000'; // Will be configured for production
+const API_URL = 'https://hisabapi.exolutus.com'; // Production API
 
 class ApiClient {
   constructor() {

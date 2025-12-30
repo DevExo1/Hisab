@@ -2,7 +2,7 @@
  * Register Screen
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -23,6 +24,8 @@ export default function RegisterScreen({ navigation }) {
   const { register } = useAuth();
   const { isDarkMode } = useTheme();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
+  const scrollViewRef = useRef(null);
+  const buttonRef = useRef(null);
   
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -41,9 +44,20 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
+    // Scroll button into view before processing
+    if (scrollViewRef.current && buttonRef.current) {
+      buttonRef.current.measure((x, y, width, height, pageX, pageY) => {
+        scrollViewRef.current.scrollResponderScrollNativeHandleToKeyboard(
+          buttonRef.current,
+          100,
+          true
+        );
+      });
+    }
+
     setIsLoading(true);
     const result = await register({
-      full_name: fullName,
+      name: fullName,
       email,
       password,
     });
@@ -58,8 +72,14 @@ export default function RegisterScreen({ navigation }) {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView 
+        ref={scrollViewRef}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+      >
         <Text style={[styles.title, { color: theme.text }]}>
           Create Account
         </Text>
@@ -118,6 +138,7 @@ export default function RegisterScreen({ navigation }) {
           />
 
           <TouchableOpacity
+            ref={buttonRef}
             style={[styles.button, styles.primaryButton]}
             onPress={handleRegister}
             disabled={isLoading}
@@ -143,6 +164,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.xl,
+    paddingBottom: SPACING.xl * 3, // Extra padding for keyboard avoidance
   },
   title: {
     fontSize: FONT_SIZES.xxxl,
