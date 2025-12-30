@@ -225,6 +225,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db_conn = Depend
 
 # --- API Endpoints ---
 
+@api_router.get("/health")
+def healthcheck():
+    """Lightweight health endpoint for clients/load balancers.
+
+    Intentionally does not touch the database so it can be used to verify
+    basic API reachability from mobile networks.
+    """
+    return {"status": "ok"}
+
+
 @api_router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db_conn = Depends(get_db_connection)):
     """Provides a token for a valid user."""

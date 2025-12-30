@@ -14,14 +14,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hisab.app"
+      "bundleIdentifier": "com.exolutus.hisab.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#14B8A6"
       },
-      "package": "com.hisab.app",
+      "package": "com.exolutus.hisab.app",
       "edgeToEdgeEnabled": true
     },
     "web": {

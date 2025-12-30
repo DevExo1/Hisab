@@ -42,13 +42,18 @@ export default function LoginScreen({ navigation }) {
 
   const checkInternetConnection = async () => {
     try {
-      // Try to fetch from a reliable endpoint
+      // Ping our own API instead of a third-party domain.
+      // Some Android networks/devices block or intercept requests to google.com,
+      // which can incorrectly mark the device as "offline" even when our API is reachable.
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
-      await fetch('https://www.google.com', { 
-        method: 'HEAD',
-        signal: controller.signal 
+
+      // Use the same API base URL as the API client (supports EXPO_PUBLIC_API_URL overrides).
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL || 'https://hisabapi.exolutus.com';
+
+      await fetch(`${baseUrl}/api/health`, {
+        method: 'GET',
+        signal: controller.signal,
       });
       
       clearTimeout(timeoutId);

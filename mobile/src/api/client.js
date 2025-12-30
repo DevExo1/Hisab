@@ -5,7 +5,9 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'https://hisabapi.exolutus.com'; // Production API
+// Configure API URL via Expo env vars (EAS/Expo) with safe production fallback.
+// In Expo, only variables prefixed with EXPO_PUBLIC_ are bundled into the app.
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://hisabapi.exolutus.com';
 
 class ApiClient {
   constructor() {
