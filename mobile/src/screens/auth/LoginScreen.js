@@ -16,19 +16,20 @@ import {
   Image,
   ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
 export default function LoginScreen({ navigation }) {
-  const { login } = useAuth();
+  const { login, biometricLogin, biometricAvailable, biometricLabel, enableBiometricLogin } = useAuth();
   const { isDarkMode } = useTheme();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [hasInternet, setHasInternet] = useState(true);
   const [checkingConnection, setCheckingConnection] = useState(true);
 
@@ -82,7 +83,25 @@ export default function LoginScreen({ navigation }) {
     const result = await login(email, password);
     setIsLoading(false);
 
-    if (!result.success) {
+    if (result.success && biometricAvailable) {
+      // Offer to enable biometric login after successful password login
+      Alert.alert(
+        `Enable ${biometricLabel}?`,
+        `You can use ${biometricLabel} to quickly login next time.`,
+        [
+          {
+            text: 'Enable',
+            onPress: async () => {
+              const enableResult = await enableBiometricLogin(email);
+              if (!enableResult.success) {
+                Alert.alert('Error', 'Failed to enable biometric login');
+              }
+            },
+          },
+          { text: 'Later', style: 'cancel' },
+        ]
+      );
+    } else if (!result.success) {
       // Check if it's a network error
       if (result.error && result.error.includes('network')) {
         Alert.alert(
@@ -95,6 +114,39 @@ export default function LoginScreen({ navigation }) {
         );
       } else {
         Alert.alert('Login Failed', result.error || 'Invalid credentials');
+      }
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    if (!hasInternet) {
+      Alert.alert(
+        'No Internet Connection',
+        'Please check your internet connection and try again.',
+        [
+          { text: 'Retry', onPress: () => checkInternetConnection() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+      return;
+    }
+
+    setIsBiometricLoading(true);
+    const result = await biometricLogin();
+    setIsBiometricLoading(false);
+
+    if (!result.success) {
+      // Don't show error if user cancelled
+      if (!result.cancelled) {
+        if (result.needsPasswordLogin) {
+          Alert.alert(
+            'Session Expired',
+            result.error || 'Please login with your email and password to continue.',
+            [{ text: 'OK', style: 'cancel' }]
+          );
+        } else {
+          Alert.alert('Biometric Login Failed', result.error || 'Failed to authenticate');
+        }
       }
     }
   };
@@ -186,7 +238,7 @@ export default function LoginScreen({ navigation }) {
           <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
             onPress={handleLogin}
-            disabled={isLoading}
+            disabled={isLoading || isBiometricLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFF" />
@@ -194,6 +246,30 @@ export default function LoginScreen({ navigation }) {
               <Text style={styles.buttonText}>Login</Text>
             )}
           </TouchableOpacity>
+
+          {biometricAvailable && (
+            <TouchableOpacity
+              style={[styles.button, styles.biometricButton, { borderColor: COLORS.primary }]}
+              onPress={handleBiometricLogin}
+              disabled={isBiometricLoading || isLoading}
+            >
+              {isBiometricLoading ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <View style={styles.biometricContent}>
+                  <MaterialCommunityIcons
+                    name="fingerprint"
+                    size={20}
+                    color={COLORS.primary}
+                    style={{ marginRight: SPACING.sm }}
+                  />
+                  <Text style={[styles.biometricButtonText, { color: COLORS.primary }]}>
+                    Login with {biometricLabel}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.button, styles.secondaryButton, { borderColor: theme.border }]}
@@ -318,6 +394,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   secondaryButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  biometricButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    marginTop: SPACING.md,
+  },
+  biometricContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  biometricButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
   },

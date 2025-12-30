@@ -12,16 +12,19 @@ import {
   TouchableOpacity, 
   TextInput,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Switch
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import apiClient from '../../api/client';
+import biometricAuth from '../../utils/biometricAuth';
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, biometricAvailable, biometricLabel, disableBiometricLogin } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
 
@@ -31,12 +34,19 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   useEffect(() => {
     if (user) {
       setName(user.name || user.full_name || '');
     }
+    checkBiometricStatus();
   }, [user]);
+
+  const checkBiometricStatus = async () => {
+    const enabled = await biometricAuth.isBiometricEnabled();
+    setBiometricEnabled(enabled);
+  };
 
   const handleSaveChanges = async () => {
     setError('');
@@ -81,6 +91,35 @@ export default function ProfileScreen() {
       setError(err.message || 'Failed to update profile');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBiometricToggle = async (value) => {
+    if (value) {
+      // Enable biometric - this should not happen as user enables it during login
+      Alert.alert('Info', 'You can enable biometric login during the next login');
+    } else {
+      // Disable biometric
+      Alert.alert(
+        `Disable ${biometricLabel}?`,
+        `You will no longer be able to use ${biometricLabel} to login.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: async () => {
+              const result = await disableBiometricLogin();
+              if (result.success) {
+                setBiometricEnabled(false);
+                Alert.alert('Success', `${biometricLabel} login has been disabled`);
+              } else {
+                Alert.alert('Error', result.error || 'Failed to disable biometric login');
+              }
+            },
+          },
+        ]
+      );
     }
   };
 
@@ -214,6 +253,39 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Biometric Settings */}
+        {biometricAvailable && (
+          <View style={styles.settingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
+            <View style={[styles.settingItem, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <MaterialCommunityIcons
+                    name="fingerprint"
+                    size={24}
+                    color={COLORS.primary}
+                    style={{ marginRight: SPACING.md }}
+                  />
+                  <View>
+                    <Text style={[styles.settingText, { color: theme.text }]}>
+                      {biometricLabel}
+                    </Text>
+                    <Text style={[styles.settingSubtext, { color: theme.textSecondary }]}>
+                      {biometricEnabled ? 'Enabled' : 'Disabled'}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={biometricEnabled}
+                  onValueChange={handleBiometricToggle}
+                  trackColor={{ false: theme.border, true: COLORS.primary + '50' }}
+                  thumbColor={biometricEnabled ? COLORS.primary : theme.border}
+                />
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Logout Button */}
         <TouchableOpacity
           style={[styles.logoutButton, SHADOWS.medium]}
@@ -345,6 +417,21 @@ const styles = StyleSheet.create({
   settingText: {
     fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  settingItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  settingItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  settingSubtext: {
+    fontSize: FONT_SIZES.sm,
+    marginTop: SPACING.xs,
   },
   logoutButton: {
     backgroundColor: COLORS.error,

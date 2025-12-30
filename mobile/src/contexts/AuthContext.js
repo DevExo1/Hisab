@@ -6,6 +6,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '../api/client';
+import biometricAuth from '../utils/biometricAuth';
 
 const AuthContext = createContext({});
 
@@ -13,11 +14,28 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('Biometric');
 
   // Check if user is logged in on app start
   useEffect(() => {
     checkAuthStatus();
+    initializeBiometric();
   }, []);
+
+  const initializeBiometric = async () => {
+    try {
+      const available = await biometricAuth.isBiometricAvailable();
+      setBiometricAvailable(available);
+      
+      if (available) {
+        const label = await biometricAuth.getBiometricLabel();
+        setBiometricLabel(label);
+      }
+    } catch (error) {
+      console.error('Error initializing biometric:', error);
+    }
+  };
 
   const checkAuthStatus = async () => {
     try {
@@ -79,9 +97,71 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const biometricLogin = async () => {
+    try {
+      // Authenticate with biometric
+      const authResult = await biometricAuth.authenticate();
+      if (!authResult.success) {
+        return { success: false, error: authResult.error, cancelled: authResult.cancelled };
+      }
+
+      // Get stored email
+      const email = await biometricAuth.getBiometricEmail();
+      if (!email) {
+        return { success: false, error: 'No stored credentials found. Please login with email and password.' };
+      }
+
+      // We need the password to authenticate, but we don't store it for security reasons
+      // Instead, we'll try to use the existing token if available
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        try {
+          const userData = await apiClient.getCurrentUser();
+          setUser(userData);
+          setIsAuthenticated(true);
+          return { success: true };
+        } catch (error) {
+          // Token might be expired, user needs to login with password again
+          return { 
+            success: false, 
+            error: 'Session expired. Please login with email and password.',
+            needsPasswordLogin: true 
+          };
+        }
+      }
+
+      return { 
+        success: false, 
+        error: 'No active session. Please login with email and password.',
+        needsPasswordLogin: true 
+      };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  const enableBiometricLogin = async (email) => {
+    try {
+      const result = await biometricAuth.saveBiometricEmail(email);
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  const disableBiometricLogin = async () => {
+    try {
+      const result = await biometricAuth.disableBiometric();
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
   const logout = async () => {
     try {
       await apiClient.logout();
+      await biometricAuth.clearBiometricData();
       setUser(null);
       setIsAuthenticated(false);
     } catch (error) {
@@ -96,10 +176,15 @@ export const AuthProvider = ({ children }) => {
     user,
     isLoading,
     isAuthenticated,
+    biometricAvailable,
+    biometricLabel,
     login,
     register,
     logout,
     updateUser,
+    biometricLogin,
+    enableBiometricLogin,
+    disableBiometricLogin,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
