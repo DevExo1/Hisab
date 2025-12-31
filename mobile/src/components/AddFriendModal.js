@@ -43,7 +43,7 @@ export default function AddFriendModal({ visible, onClose, onSubmit, isDarkMode 
     setError('');
 
     try {
-      await onSubmit({ email: email.trim() });
+      await onSubmit({ friend_email: email.trim() });
       setEmail('');
       onClose();
     } catch (err) {
@@ -124,7 +124,7 @@ export default function AddFriendModal({ visible, onClose, onSubmit, isDarkMode 
                   onPress={handleClose}
                   disabled={isLoading}
                 >
-                  <Text style={[styles.cancelButtonText, { color: theme.text }]}>Cancel</Text>
+                  <Text style={[styles.cancelButtonText, { color: theme.text }]} numberOfLines={1}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -141,7 +141,7 @@ export default function AddFriendModal({ visible, onClose, onSubmit, isDarkMode 
                     {isLoading ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.submitButtonText}>Add Friend</Text>
+                      <Text style={styles.submitButtonText} numberOfLines={1}>Add</Text>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
@@ -232,13 +232,14 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
   },
   cancelButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
   },
   submitButton: {
@@ -247,13 +248,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   submitButtonGradient: {
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 44,
   },
   submitButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
   },

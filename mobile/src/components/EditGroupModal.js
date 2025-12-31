@@ -93,15 +93,15 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={handleClose}
     >
-      <Pressable style={styles.overlay} onPress={handleClose}>
+      <View style={styles.overlay}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
-          <Pressable onPress={(e) => e.stopPropagation()}>
+          <Pressable style={styles.innerWrapper} onPress={(e) => e.stopPropagation()}>
             <View style={[styles.modalContent, { backgroundColor: theme.surface }, SHADOWS.large]}>
               {/* Header */}
               <View style={styles.header}>
@@ -114,7 +114,12 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContainer}
+                keyboardShouldPersistTaps="handled"
+              >
                 {/* Error Message */}
                 {error ? (
                   <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
@@ -238,7 +243,7 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
                   onPress={handleClose}
                   disabled={isLoading}
                 >
-                  <Text style={[styles.cancelButtonText, { color: theme.text }]}>Cancel</Text>
+                  <Text style={[styles.cancelButtonText, { color: theme.text }]} numberOfLines={1}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -255,7 +260,7 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
                     {isLoading ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.submitButtonText}>Save Changes</Text>
+                      <Text style={styles.submitButtonText} numberOfLines={1}>Save</Text>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
@@ -263,7 +268,7 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
             </View>
           </Pressable>
         </KeyboardAvoidingView>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -272,16 +277,23 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
+    paddingTop: SPACING.sm,
   },
   keyboardView: {
     width: '100%',
+    flex: 1,
+  },
+  innerWrapper: {
+    flex: 1,
   },
   modalContent: {
-    borderTopLeftRadius: BORDER_RADIUS.xl,
-    borderTopRightRadius: BORDER_RADIUS.xl,
+    width: '100%',
+    flex: 1,
+    borderRadius: 0,
     padding: SPACING.lg,
-    maxHeight: '90%',
+    maxHeight: '100%',
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -305,7 +317,10 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   scrollContent: {
-    maxHeight: 500,
+    flex: 1,
+  },
+  scrollContainer: {
+    paddingBottom: SPACING.xl * 2,
   },
   errorBox: {
     padding: SPACING.md,
@@ -423,13 +438,14 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
   },
   cancelButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
   },
   submitButton: {
@@ -438,13 +454,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   submitButtonGradient: {
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 44,
   },
   submitButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
   },

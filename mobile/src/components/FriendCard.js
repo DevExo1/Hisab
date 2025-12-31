@@ -19,7 +19,7 @@ export default function FriendCard({ friend, isDarkMode = false, currency = 'USD
   };
 
   const getBalanceText = (balance) => {
-    if (balance === 0) return 'Settled up';
+    if (Number(balance || 0) === 0) return 'Settled up';
     if (balance > 0) return 'owes you'; // Positive = they owe you
     return 'you owe'; // Negative = you owe them
   };
@@ -68,9 +68,9 @@ export default function FriendCard({ friend, isDarkMode = false, currency = 'USD
 
         {/* Right: Balance */}
         <View style={styles.rightSection}>
-          {friend.balance !== 0 && (
+          {Number(friend.balance || 0) !== 0 && (
             <Text style={[styles.balanceAmount, { color: getBalanceColor(friend.balance) }]}>
-              {friend.balance > 0 ? '+' : ''}{formatCurrency(Math.abs(friend.balance), currency)}
+              {friend.balance > 0 ? '+' : ''}{formatCurrency(Math.abs(Number(friend.balance || 0)), currency)}
             </Text>
           )}
           <Text style={[styles.balanceLabel, { color: theme.textSecondary }]}>

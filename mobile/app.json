@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Hisab",
+    "name": "Hisab - Group Accounts Manager",
     "slug": "hisab",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,16 +12,19 @@
       "resizeMode": "contain",
       "backgroundColor": "#14B8A6"
     },
+    "extra": {
+      "appStoreSku": "HISAB-IOS-001"
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.exolutus.hisab.app"
+      "bundleIdentifier": "com.exolutus.hisab"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#14B8A6"
       },
-      "package": "com.exolutus.hisab.app",
+      "package": "com.exolutus.hisab",
       "edgeToEdgeEnabled": true
     },
     "web": {
