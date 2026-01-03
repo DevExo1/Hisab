@@ -166,6 +166,7 @@ class ApiClient {
           return {
             ...group,
             balance: userBalance,
+            current_user_id: currentUser?.id, // Add current user ID for GroupCard
             balances: balanceData.balances || [],
             settlements: balanceData.settlements || [],
           };
@@ -173,6 +174,7 @@ class ApiClient {
           return {
             ...group,
             balance: 0,
+            current_user_id: currentUser?.id, // Add current user ID for GroupCard
             balances: [],
             settlements: [],
           };
@@ -194,6 +196,12 @@ class ApiClient {
     return this.request(`/api/groups/${groupId}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
+    });
+  }
+
+  async deleteGroup(groupId) {
+    return this.request(`/api/groups/${groupId}`, {
+      method: 'DELETE',
     });
   }
 

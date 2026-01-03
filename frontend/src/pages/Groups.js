@@ -14,7 +14,9 @@ export const Groups = ({
   handleViewGroupDetails,
   handleBackFromGroupDetails,
   handleOpenSettlement,
-  user
+  user,
+  groupDetailsRefreshTrigger,
+  handleRefreshAll
 }) => {
   // If a group is selected, show group details
   if (selectedGroupView) {
@@ -29,6 +31,8 @@ export const Groups = ({
         handleAddExpenseToGroup={handleAddExpenseToGroup}
         handleOpenSettlement={handleOpenSettlement}
         user={user}
+        onExpenseAdded={groupDetailsRefreshTrigger}
+        handleRefreshAll={handleRefreshAll}
       />
     );
   }

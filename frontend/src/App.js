@@ -39,6 +39,7 @@ function App() {
   const [selectedGroupForExpense, setSelectedGroupForExpense] = useState(null);
   const [selectedGroupView, setSelectedGroupView] = useState(null);
   const [showSettlementView, setShowSettlementView] = useState(false);
+  const [groupDetailsRefreshTrigger, setGroupDetailsRefreshTrigger] = useState(0);
 
   // Custom Hooks
   const { user, loading: authLoading, login, logout, isAuthenticated } = useAuth();
@@ -122,8 +123,16 @@ function App() {
       await loadAllData();
 
       alert('Expense added successfully!');
+      
+      // Trigger GroupDetails refresh if viewing this group
+      if (selectedGroupView?.id === group.id) {
+        setGroupDetailsRefreshTrigger(prev => prev + 1);
+      }
+      
+      return { success: true, groupId: group.id };
     } catch (error) {
       alert('Failed to add expense. Please try again.');
+      throw error;
     }
   };
 
@@ -181,15 +190,41 @@ function App() {
         });
       }
 
+      // Check if members are being removed (excluding the current user who is always added back by backend)
+      const currentGroup = groups.find(g => g.id === groupData.id);
+      if (currentGroup && currentGroup.members) {
+        const currentMemberIds = currentGroup.members.map(m => m.id).filter(id => id && id !== user.id);
+        const newMemberIds = memberIds.filter(id => id !== user.id);
+        const removedMemberIds = currentMemberIds.filter(id => !newMemberIds.includes(id));
+        
+        // Only block if actual members (not current user) are being removed
+        if (removedMemberIds.length > 0) {
+          // Check if group has any expenses (transactions)
+          const groupHasExpenses = expenses.some(exp => exp.groupId === groupData.id || exp.group_id === groupData.id);
+          
+          if (groupHasExpenses) {
+            alert('Cannot remove members from groups with existing transactions. Members can only be added.');
+            return;
+          }
+        }
+      }
+
       // Update group via API with currency
       const response = await groupAPI.updateGroup(groupData.id, groupData.name, memberIds, groupData.currency || 'USD');
 
-      // Reload data
+      // Reload data to get fresh group information with updated currency
       await loadAllData();
 
       alert('Group updated successfully!');
+      
+      // Clear editing group and close modal
       setEditingGroup(null);
       setShowEditGroup(false);
+      
+      // Trigger refresh if viewing this group
+      if (selectedGroupView?.id === groupData.id) {
+        setGroupDetailsRefreshTrigger(prev => prev + 1);
+      }
     } catch (error) {
       alert(`Failed to update group: ${error.response?.data?.detail || error.message}`);
     }
@@ -292,6 +327,7 @@ function App() {
               selectedGroup={selectedGroupView}
               onBack={handleBackFromSettlement}
               user={user}
+              onSettlementRecorded={loadAllData}
             />
           );
         }
@@ -309,6 +345,8 @@ function App() {
             handleBackFromGroupDetails={handleBackFromGroupDetails}
             handleOpenSettlement={handleOpenSettlement}
             user={user}
+            groupDetailsRefreshTrigger={groupDetailsRefreshTrigger}
+            handleRefreshAll={loadAllData}
           />
         );
       case 'friends':
@@ -398,6 +436,7 @@ function App() {
             setSelectedGroupForExpense(null);
           }}
           onSubmit={handleAddExpense}
+          onExpenseAdded={() => setGroupDetailsRefreshTrigger(prev => prev + 1)}
           darkMode={darkMode}
           friends={friends}
           currency={currency}

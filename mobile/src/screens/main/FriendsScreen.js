@@ -59,29 +59,6 @@ export default function FriendsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <View>
-          <Text style={[styles.title, { color: theme.text }]}>Friends</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            {friends.length} {friends.length === 1 ? 'friend' : 'friends'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowAddFriendModal(true)}
-        >
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.primaryDark]}
-            style={styles.addButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.addButtonText}>+ Add Friend</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-
       {/* Friends List */}
       <ScrollView
         style={styles.scrollView}
@@ -126,6 +103,21 @@ export default function FriendsScreen() {
         )}
       </ScrollView>
 
+      {/* Floating Action Button */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowAddFriendModal(true)}
+      >
+        <LinearGradient
+          colors={[COLORS.primary, COLORS.primaryDark]}
+          style={styles.fabGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+
       {/* Add Friend Modal */}
       <AddFriendModal
         visible={showAddFriendModal}
@@ -141,6 +133,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  fab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    bottom: SPACING.xl,
+    borderRadius: BORDER_RADIUS.full,
+    elevation: 8,
+    ...SHADOWS.large,
+  },
+  fabGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: BORDER_RADIUS.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabText: {
+    fontSize: 32,
+    color: '#FFFFFF',
+    fontWeight: FONT_WEIGHTS.bold,
+    marginTop: -2,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -150,24 +163,12 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.md,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    ...SHADOWS.small,
-  },
-  title: {
+title: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: FONT_WEIGHTS.bold,
     marginBottom: 2,
   },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-  },
-  addButton: {
+addButton: {
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
     ...SHADOWS.medium,

@@ -620,6 +620,83 @@ def update_group(group_id: int, group_update: GroupCreate, current_user: User = 
     finally:
         cursor.close()
 
+@api_router.delete("/groups/{group_id}", response_model=Dict[str, Any])
+def delete_group(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
+    """
+    Delete a group and all associated data.
+    Only the group creator can delete the group.
+    Returns statistics about what was deleted.
+    """
+    cursor = db_conn.cursor(dictionary=True)
+    try:
+        # Get group details and verify creator
+        cursor.execute("""
+            SELECT id, name, created_by FROM groups WHERE id = %s
+        """, (group_id,))
+        group = cursor.fetchone()
+        
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        # Authorization check: Only creator can delete
+        if group['created_by'] != current_user.id:
+            raise HTTPException(
+                status_code=403, 
+                detail="Only the group creator can delete this group"
+            )
+        
+        # Count what will be deleted (for return statistics)
+        cursor.execute("SELECT COUNT(*) as count FROM expense_splits es INNER JOIN expenses e ON es.expense_id = e.id WHERE e.group_id = %s", (group_id,))
+        expense_splits_count = cursor.fetchone()['count']
+        
+        cursor.execute("SELECT COUNT(*) as count FROM expenses WHERE group_id = %s", (group_id,))
+        expenses_count = cursor.fetchone()['count']
+        
+        cursor.execute("SELECT COUNT(*) as count FROM settlements WHERE group_id = %s", (group_id,))
+        settlements_count = cursor.fetchone()['count']
+        
+        cursor.execute("SELECT COUNT(*) as count FROM group_members WHERE group_id = %s", (group_id,))
+        members_count = cursor.fetchone()['count']
+        
+        # Start atomic deletion (proper order to respect foreign keys)
+        # Step 1: Delete expense splits (deepest child)
+        cursor.execute("""
+            DELETE es FROM expense_splits es
+            INNER JOIN expenses e ON es.expense_id = e.id
+            WHERE e.group_id = %s
+        """, (group_id,))
+        
+        # Step 2: Delete expenses
+        cursor.execute("DELETE FROM expenses WHERE group_id = %s", (group_id,))
+        
+        # Step 3: Delete settlements
+        cursor.execute("DELETE FROM settlements WHERE group_id = %s", (group_id,))
+        
+        # Step 4: Delete group memberships
+        cursor.execute("DELETE FROM group_members WHERE group_id = %s", (group_id,))
+        
+        # Step 5: Delete the group itself
+        cursor.execute("DELETE FROM groups WHERE id = %s", (group_id,))
+        
+        db_conn.commit()
+        
+        return {
+            "success": True,
+            "message": f"Group '{group['name']}' deleted successfully",
+            "deleted": {
+                "expense_splits": expense_splits_count,
+                "expenses": expenses_count,
+                "settlements": settlements_count,
+                "members": members_count
+            }
+        }
+        
+    except mysql.connector.Error as err:
+        db_conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {err}")
+    finally:
+        cursor.close()
+
 @api_router.get("/groups/{group_id}/expenses", response_model=List[Expense])
 def get_group_expenses(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
     """Get all expenses for a specific group."""
@@ -862,8 +939,8 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
             user2_owes = data['user2_owes_user1']
             net_balance = user1_owes - user2_owes
             
-            # Only include if there's a net debt > 0.01
-            if abs(net_balance) > 0.01:
+            # Only include if there's a net debt >= 0.01 (consistent threshold)
+            if abs(net_balance) >= 0.01:
                 if net_balance > 0:
                     # User1 owes User2 (net)
                     pairwise_list.append({
@@ -909,8 +986,9 @@ def calculate_settlements(balances: List[Balance]) -> List[Dict]:
     Returns a list of suggested payments to settle all debts.
     """
     # Separate creditors (owed money) and debtors (owe money)
-    creditors = [(b.user_id, b.user_name, b.balance) for b in balances if b.balance > 0.01]
-    debtors = [(b.user_id, b.user_name, -b.balance) for b in balances if b.balance < -0.01]
+    # Use >= and <= to include boundary values like 0.01 and -0.01
+    creditors = [(b.user_id, b.user_name, b.balance) for b in balances if b.balance >= 0.01]
+    debtors = [(b.user_id, b.user_name, -b.balance) for b in balances if b.balance <= -0.01]
     
     settlements = []
     
@@ -938,10 +1016,10 @@ def calculate_settlements(balances: List[Balance]) -> List[Dict]:
         creditors[i] = (creditor_id, creditor_name, credit_amount - settle_amount)
         debtors[j] = (debtor_id, debtor_name, debt_amount - settle_amount)
         
-        # Move to next creditor or debtor if fully settled
-        if creditors[i][2] < 0.01:
+        # Move to next creditor or debtor if fully settled (use <= for consistency)
+        if creditors[i][2] <= 0.01:
             i += 1
-        if debtors[j][2] < 0.01:
+        if debtors[j][2] <= 0.01:
             j += 1
     
     return settlements

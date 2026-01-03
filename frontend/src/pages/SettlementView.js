@@ -9,7 +9,8 @@ export const SettlementView = ({
   currency, 
   selectedGroup,
   onBack,
-  user
+  user,
+  onSettlementRecorded
 }) => {
   const [viewType, setViewType] = useState('simplified'); // 'simplified' or 'detailed'
   const [simplifiedSettlements, setSimplifiedSettlements] = useState([]);
@@ -123,6 +124,10 @@ export const SettlementView = ({
       setShowSuccessModal(true);
       // Reload settlements
       loadSettlements();
+      // Notify parent to refresh all data (including dashboard balances)
+      if (onSettlementRecorded) {
+        onSettlementRecorded();
+      }
     } catch (error) {
 
       const message = error?.response?.data?.detail || error?.message || 'Failed to record settlement';

@@ -285,6 +285,7 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.xs,
   },
   logoContainer: {
     width: 36,

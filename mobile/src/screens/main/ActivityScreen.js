@@ -203,14 +203,7 @@ export default function ActivityScreen() {
     <ActivityItem activity={item} theme={theme} isDarkMode={isDarkMode} />
   );
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Text style={[styles.title, { color: theme.text }]}>Recent Activity</Text>
-      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-        {activityMetadata.total || activity.length} {activityMetadata.total === 1 ? 'item' : 'items'}
-      </Text>
-    </View>
-  );
+
 
   const renderEmpty = () => (
     <View style={styles.emptyState}>
@@ -252,7 +245,7 @@ export default function ActivityScreen() {
         data={activity}
         renderItem={renderItem}
         keyExtractor={(item, index) => `${item.type}-${item.id}-${index}`}
-        ListHeaderComponent={renderHeader}
+        
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={onEndReached}
@@ -278,19 +271,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.lg,
   },
-  header: {
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  title: {
+title: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     marginBottom: SPACING.xs / 2,
   },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-  },
-  loadingText: {
+loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.md,
   },

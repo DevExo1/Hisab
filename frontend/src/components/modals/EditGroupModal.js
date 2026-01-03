@@ -53,7 +53,7 @@ export const EditGroupModal = ({ isOpen, onClose, onSubmit, darkMode, group, fri
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md`}>
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Edit Group</h2>
           <button
@@ -145,7 +145,7 @@ export const EditGroupModal = ({ isOpen, onClose, onSubmit, darkMode, group, fri
               type="submit"
               className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
             >
-              Save Changes
+              Save
             </button>
           </div>
         </form>

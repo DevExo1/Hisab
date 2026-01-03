@@ -45,13 +45,42 @@ export const DataProvider = ({ children }) => {
   }, [isAuthenticated, registerSyncCallback]);
 
   // Handle incremental sync changes
-  const handleSyncChanges = (changes) => {
+  const handleSyncChanges = async (changes) => {
     try {
-      // Merge groups
+      // Merge groups - but need to fetch balances for updated groups
       if (changes.groups && changes.groups.length > 0) {
+        // Fetch fresh data with balances for changed groups
+        const groupsWithBalances = await Promise.all(
+          changes.groups.map(async (group) => {
+            try {
+              const balanceData = await apiClient.getGroupBalances(group.id);
+              const currentUser = await apiClient.getCurrentUser();
+              const userBalance = balanceData.balances?.find(
+                b => b.user_id === currentUser?.id
+              );
+              
+              return {
+                ...group,
+                balance: userBalance?.balance || 0,
+                current_user_id: currentUser?.id,
+                balances: balanceData.balances || [],
+                settlements: balanceData.settlements || [],
+              };
+            } catch (error) {
+              console.error(`Failed to load balance for group ${group.id}:`, error);
+              return {
+                ...group,
+                balance: 0,
+                balances: [],
+                settlements: [],
+              };
+            }
+          })
+        );
+        
         setGroups(prevGroups => {
           const updatedGroups = [...prevGroups];
-          changes.groups.forEach(newGroup => {
+          groupsWithBalances.forEach(newGroup => {
             const index = updatedGroups.findIndex(g => g.id === newGroup.id);
             if (index >= 0) {
               updatedGroups[index] = newGroup;

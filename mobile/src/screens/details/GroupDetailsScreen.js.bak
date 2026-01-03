@@ -3,7 +3,7 @@
  * Shows group balance, members, and expenses
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -26,7 +25,6 @@ import { formatCurrency } from '../../utils/currency';
 import ActivityItem from '../../components/ActivityItem';
 import AddExpenseModal from '../../components/AddExpenseModal';
 import EditGroupModal from '../../components/EditGroupModal';
-import SelectMembersModal from '../../components/SelectMembersModal';
 import apiClient from '../../api/client';
 
 export default function GroupDetailsScreen({ route, navigation }) {
@@ -45,12 +43,6 @@ export default function GroupDetailsScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
-  const [showSelectMembersModal, setShowSelectMembersModal] = useState(false);
-  const [editGroupMembers, setEditGroupMembers] = useState([]);
-  const [editGroupFormState, setEditGroupFormState] = useState({
-    groupName: '',
-    currency: 'USD',
-  });
   const [showMembers, setShowMembers] = useState(false);
 
   // Find the group
@@ -110,13 +102,6 @@ export default function GroupDetailsScreen({ route, navigation }) {
     loadGroupDetails();
   }, [groupId]);
 
-  // Refresh data when screen comes back into focus (e.g., after recording settlement)
-  useFocusEffect(
-    useCallback(() => {
-      loadGroupDetails();
-    }, [groupId])
-  );
-
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshData();
@@ -130,19 +115,6 @@ export default function GroupDetailsScreen({ route, navigation }) {
 
   const handleEditGroup = async (updatedGroup) => {
     try {
-      // Only check if members are being REMOVED (not added), excluding current user
-      const currentMemberIds = (group.members?.map(m => m.user_id || m.id) || []).filter(id => id !== user?.id);
-      const newMemberIds = (updatedGroup.member_ids || []).filter(id => id !== user?.id);
-      const removedMemberIds = currentMemberIds.filter(id => !newMemberIds.includes(id));
-      
-      // Only prevent removal if actual members (not current user) are being removed and there are transactions
-      if (removedMemberIds.length > 0) {
-        // Check if group has any transactions
-        if (groupExpenses.length > 0 || settlements.length > 0) {
-          throw new Error('Cannot remove members from a group with existing transactions. Members can only be added.');
-        }
-      }
-      
       await apiClient.updateGroup(groupId, {
         name: updatedGroup.name,
         currency: updatedGroup.currency,
@@ -154,80 +126,6 @@ export default function GroupDetailsScreen({ route, navigation }) {
     } catch (error) {
       throw error;
     }
-  };
-
-  const handleDeleteGroup = () => {
-    // Check if user is creator
-    if (group.created_by !== user?.id) {
-      Alert.alert(
-        'Cannot Delete',
-        'Only the group creator can delete this group.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Show balance warning if there are unsettled balances
-    const balanceWarning = currentUserBalance !== 0
-      ? `\n\n⚠️ Current balance: ${currentUserBalance > 0 ? '+' : ''}${formatCurrency(currentUserBalance, group.currency)}\nDeleting will erase this balance.`
-      : '';
-
-    Alert.alert(
-      'Delete Group?',
-      `This will permanently delete:\n\n• ${groupExpenses.length} expense${groupExpenses.length !== 1 ? 's' : ''}\n• ${settlements.length} settlement${settlements.length !== 1 ? 's' : ''}\n• All transaction history for ${members.length} member${members.length !== 1 ? 's' : ''}${balanceWarning}\n\nThis cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await apiClient.deleteGroup(groupId);
-              await refreshData();
-              Alert.alert(
-                'Group Deleted',
-                `Successfully deleted ${result.deleted.expenses} expenses, ${result.deleted.settlements} settlements, and removed ${result.deleted.members} members.`,
-                [{ text: 'OK', onPress: () => navigation.goBack() }]
-              );
-            } catch (error) {
-              Alert.alert(
-                'Delete Failed',
-                error.message || 'Failed to delete group. Please try again.',
-                [{ text: 'OK' }]
-              );
-            }
-          },
-        },
-      ]
-    );
-  };
-
-
-  const handleOpenSelectMembersForEdit = (formState) => {
-    // Save the current edit form state before switching modals
-    setEditGroupFormState(formState);
-    // Hide EditGroup and show SelectMembers
-    setShowEditGroupModal(false);
-    setShowSelectMembersModal(true);
-  };
-
-  const handleEditMembersSelected = (members) => {
-    setEditGroupMembers(members);
-    // Close SelectMembers and reopen EditGroup
-    setShowSelectMembersModal(false);
-    setShowEditGroupModal(true);
-  };
-
-  const handleCloseSelectMembersForEdit = () => {
-    // Just go back to EditGroup without changing selections
-    setShowSelectMembersModal(false);
-    setShowEditGroupModal(true);
-  };
-
-  const handleCloseEditModal = () => {
-    setShowEditGroupModal(false);
-    setEditGroupMembers([]);
-    setEditGroupFormState({ groupName: '', currency: 'USD' });
   };
 
   const handleAddExpense = async (expenseData) => {
@@ -325,19 +223,16 @@ export default function GroupDetailsScreen({ route, navigation }) {
   // Get members from balances (more accurate than group.members)
   const members = balances?.balances || group.members || [];
 
-  // Show loading state if group not loaded
-  if (!group) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: SPACING.xxl }} />
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+        <TouchableOpacity
+          style={[styles.backButton, { backgroundColor: theme.surfaceSecondary }]}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={[styles.backButtonText, { color: theme.text }]}>←</Text>
+        </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
             {group.name}
@@ -346,43 +241,12 @@ export default function GroupDetailsScreen({ route, navigation }) {
             {members.length} {members.length === 1 ? 'member' : 'members'} • {group.currency || 'USD'}
           </Text>
         </View>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.refreshButton, { backgroundColor: theme.surfaceSecondary }]}
-            onPress={onRefresh}
-            disabled={refreshing}
-          >
-            <Ionicons 
-              name="refresh-sharp" 
-              size={20} 
-              color={refreshing ? theme.textTertiary : theme.text} 
-              style={refreshing ? styles.spinning : null}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.editButton, { backgroundColor: theme.surfaceSecondary }]}
-            onPress={() => {
-              if (!group) return;
-              
-              // Initialize edit group members from group data
-              const memberIds = group.members
-                ?.filter(m => !m.is_current_user)
-                .map(m => m.user_id || m.id) || [];
-              const preselected = friends ? friends.filter(f => memberIds.includes(f.id)) : [];
-              setEditGroupMembers(preselected);
-              
-              // Initialize form state
-              setEditGroupFormState({
-                groupName: group.name || '',
-                currency: group.currency || 'USD',
-              });
-              
-              setShowEditGroupModal(true);
-            }}
-          >
-            <Ionicons name="create-sharp" size={20} color={theme.text} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.editButton, { backgroundColor: theme.surfaceSecondary }]}
+          onPress={() => setShowEditGroupModal(true)}
+        >
+          <Ionicons name="create-sharp" size={20} color={theme.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -543,31 +407,11 @@ export default function GroupDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Delete Group Section - Only show if user is creator */}
-        {user && group.created_by === user.id && (
-          <View style={[styles.dangerZone, { backgroundColor: theme.surfaceSecondary, borderColor: COLORS.orange }]}>
-            <View style={styles.dangerZoneHeader}>
-              <Ionicons name="warning-sharp" size={20} color={COLORS.orange} style={{ marginRight: SPACING.xs }} />
-              <Text style={[styles.dangerZoneTitle, { color: COLORS.orange }]}>Danger Zone</Text>
-            </View>
-            <Text style={[styles.dangerZoneText, { color: theme.textSecondary }]}>
-              Once you delete a group, there is no going back. All expenses, settlements, and transaction history will be permanently deleted.
-            </Text>
-            <TouchableOpacity
-              style={[styles.deleteButton, { backgroundColor: COLORS.orange }]}
-              onPress={handleDeleteGroup}
-            >
-              <Ionicons name="trash-sharp" size={18} color="#FFFFFF" style={{ marginRight: SPACING.xs }} />
-              <Text style={styles.deleteButtonText}>Delete Group</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
       {/* Action Buttons */}
-      <View style={[styles.actionButtons, { backgroundColor: theme.surface, borderTopColor: theme.border, paddingBottom: insets.bottom }]}>
+      <View style={[styles.actionButtons, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => setShowAddExpenseModal(true)}
@@ -608,12 +452,7 @@ export default function GroupDetailsScreen({ route, navigation }) {
       {/* Add Expense Modal */}
       <AddExpenseModal
         visible={showAddExpenseModal}
-        onClose={async () => {
-          setShowAddExpenseModal(false);
-          // Reload data when modal closes - refresh context first, then load details
-          await refreshData();
-          await loadGroupDetails();
-        }}
+        onClose={() => setShowAddExpenseModal(false)}
         onSubmit={handleAddExpense}
         group={{
           ...group,
@@ -630,23 +469,10 @@ export default function GroupDetailsScreen({ route, navigation }) {
       {/* Edit Group Modal */}
       <EditGroupModal
         visible={showEditGroupModal}
-        onClose={handleCloseEditModal}
+        onClose={() => setShowEditGroupModal(false)}
         onSubmit={handleEditGroup}
         group={group}
         friends={friends}
-        isDarkMode={isDarkMode}
-        selectedMembers={editGroupMembers}
-        onOpenSelectMembers={handleOpenSelectMembersForEdit}
-        initialFormState={editGroupFormState}
-      />
-
-      {/* Select Members Modal */}
-      <SelectMembersModal
-        visible={showSelectMembersModal}
-        onClose={handleCloseSelectMembersForEdit}
-        onDone={handleEditMembersSelected}
-        friends={friends}
-        initialSelectedFriends={editGroupMembers}
         isDarkMode={isDarkMode}
       />
     </View>
@@ -670,9 +496,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     ...SHADOWS.small,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+  },
+  backButtonText: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.bold,
   },
   headerCenter: {
     flex: 1,
@@ -685,35 +523,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     marginTop: 2,
   },
-  headerButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  refreshButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   editButton: {
     width: 36,
     height: 36,
     borderRadius: BORDER_RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  spinning: {
-    transform: [{ rotate: '180deg' }],
+    marginLeft: SPACING.sm,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.xs,
-    paddingBottom: SPACING.md,
+    padding: SPACING.md,
   },
   balanceSummaryCard: {
     borderRadius: BORDER_RADIUS.md,
@@ -853,18 +675,19 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
+    height: 50,
   },
   actionButtonGradient: {
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    paddingHorizontal: SPACING.sm,
   },
   actionButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    height: '100%',
   },
   actionButtonIcon: {
     marginRight: SPACING.xs,
@@ -876,38 +699,5 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: SPACING.xl,
-  },
-  dangerZone: {
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    padding: SPACING.md,
-    marginTop: SPACING.md,
-  },
-  dangerZoneHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  dangerZoneTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
-  },
-  dangerZoneText: {
-    fontSize: FONT_SIZES.sm,
-    lineHeight: 20,
-    marginBottom: SPACING.md,
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  deleteButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: '#FFFFFF',
   },
 });

@@ -62,6 +62,11 @@ export const useData = (user, currency) => {
    * Load groups from API
    */
   const loadGroups = async () => {
+    if (!user || !user.id) {
+      console.error('[useData] Cannot load groups: user is not defined', user);
+      return [];
+    }
+    
     try {
       const groupsData = await groupAPI.getGroups();
 
@@ -72,9 +77,15 @@ export const useData = (user, currency) => {
             const balanceData = await groupAPI.getGroupBalances(group.id);
 
             // Find current user's balance
-            const userBalance = balanceData.balances.find(
+            const userBalance = balanceData.balances?.find(
               b => b.user_id === user?.id
             );
+
+            console.log(`[useData] Group ${group.id} (${group.name}):`, {
+              balancesCount: balanceData.balances?.length,
+              userBalance: userBalance,
+              userId: user?.id
+            });
 
             return {
               ...group,
@@ -84,6 +95,7 @@ export const useData = (user, currency) => {
               currency: group.currency || currency,
             };
           } catch (error) {
+            console.error(`[useData] Failed to load balance for group ${group.id}:`, error);
             return {
               ...group,
               balance: 0,

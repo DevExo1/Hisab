@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CURRENCIES } from '../../utils/currency';
 
-export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends = [], currency, groups = [], selectedGroup = null, user = null }) => {
+export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends = [], currency, groups = [], selectedGroup = null, user = null, onExpenseAdded = null }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [paidBy, setPaidBy] = useState('You');
@@ -43,7 +43,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
     }
   }, [isOpen, selectedGroup]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     // For group context, use selectedGroup.id, otherwise use groupId from state
@@ -76,7 +76,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
         }
       }
       
-      onSubmit({
+      await onSubmit({
         description,
         amount: parseFloat(amount),
         paidBy,
@@ -89,6 +89,12 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
         groupName: currentGroup?.name || null,
         currency: expenseCurrency
       });
+      
+      // Trigger refresh callback if provided (for GroupDetails)
+      if (onExpenseAdded) {
+        onExpenseAdded();
+      }
+      
       setDescription('');
       setAmount('');
       setPaidBy('You');

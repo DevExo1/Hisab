@@ -12,19 +12,24 @@ export const GroupDetails = ({
   handleEditGroupClick,
   handleAddExpenseToGroup,
   handleOpenSettlement,
-  user
+  user,
+  onExpenseAdded,
+  handleRefreshAll
 }) => {
   const [balanceData, setBalanceData] = useState(null);
   const [isLoadingBalances, setIsLoadingBalances] = useState(true);
   const [settlements, setSettlements] = useState([]);
   const [isLoadingSettlements, setIsLoadingSettlements] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (selectedGroupView) {
       fetchGroupBalances();
       fetchGroupSettlements();
     }
-  }, [selectedGroupView?.id]);
+  }, [selectedGroupView?.id, onExpenseAdded, expenses]);
 
   const fetchGroupBalances = async () => {
     try {
@@ -49,6 +54,44 @@ export const GroupDetails = ({
       setSettlements([]);
     } finally {
       setIsLoadingSettlements(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    await Promise.all([fetchGroupBalances(), fetchGroupSettlements()]);
+    // Also trigger parent data refresh if callback provided
+    if (handleRefreshAll) {
+      await handleRefreshAll();
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (deleteConfirmText !== selectedGroupView.name) {
+      alert('Group name does not match. Please type the exact group name to confirm deletion.');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const result = await groupAPI.deleteGroup(selectedGroupView.id);
+      alert(`Group deleted successfully!\n\nDeleted:\n- ${result.deleted.expenses} expenses\n- ${result.deleted.settlements} settlements\n- ${result.deleted.members} members`);
+      
+      // Refresh all data and navigate back
+      if (handleRefreshAll) {
+        await handleRefreshAll();
+      }
+      handleBackFromGroupDetails();
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      if (error.response?.status === 403) {
+        alert('You cannot delete this group. Only the group creator can delete it.');
+      } else {
+        alert('Failed to delete group. Please try again.');
+      }
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+      setDeleteConfirmText('');
     }
   };
 
@@ -111,17 +154,35 @@ export const GroupDetails = ({
 
   return (
     <div className="space-y-6">
-      {/* Header with back button */}
-      <div className="flex items-center space-x-3">
+      {/* Header with back button and refresh */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleBackFromGroupDetails}
+            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition-colors`}
+          >
+            <span className="text-xl">←</span>
+          </button>
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {selectedGroupView.name}
+          </h2>
+        </div>
         <button
-          onClick={handleBackFromGroupDetails}
-          className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition-colors`}
+          onClick={handleRefresh}
+          disabled={isLoadingBalances || isLoadingSettlements}
+          className={`p-2 rounded-lg transition-all ${
+            isLoadingBalances || isLoadingSettlements
+              ? 'opacity-50 cursor-not-allowed'
+              : darkMode 
+                ? 'hover:bg-gray-700' 
+                : 'hover:bg-gray-100'
+          }`}
+          title="Refresh group data"
         >
-          <span className="text-xl">←</span>
+          <span className={`text-xl ${(isLoadingBalances || isLoadingSettlements) ? 'animate-spin inline-block' : ''}`}>
+            🔄
+          </span>
         </button>
-        <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          {selectedGroupView.name}
-        </h2>
       </div>
 
       {/* Balance Summary Cards */}
@@ -162,7 +223,7 @@ export const GroupDetails = ({
             {!isLoadingBalances && youOwe > 0 && (
               <button
                 onClick={() => handleOpenSettlement(selectedGroupView)}
-                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-medium hover:from-teal-600 hover:to-emerald-600 transition-all shadow-md text-sm"
+                className="px-4 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-medium hover:from-teal-600 hover:to-emerald-600 transition-all shadow-md text-sm"
               >
                 Settle Up
               </button>
@@ -191,7 +252,7 @@ export const GroupDetails = ({
             {!isLoadingBalances && (youOwe > 0 || youAreOwed > 0) && (
               <button
                 onClick={() => handleOpenSettlement(selectedGroupView)}
-                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-medium hover:from-teal-600 hover:to-emerald-600 transition-all shadow-md text-sm"
+                className="px-4 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-medium hover:from-teal-600 hover:to-emerald-600 transition-all shadow-md text-sm"
               >
                 Settle Up
               </button>
@@ -232,7 +293,7 @@ export const GroupDetails = ({
           </div>
           <button
             onClick={() => handleEditGroupClick(selectedGroupView)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            className="bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
           >
             <span>✏️</span>
             <span>Edit Group</span>
@@ -270,7 +331,7 @@ export const GroupDetails = ({
           </h3>
           <button
             onClick={() => handleAddExpenseToGroup(selectedGroupView)}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
+            className="bg-green-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
           >
             <span>+</span>
             <span>Add Expense</span>
@@ -299,6 +360,111 @@ export const GroupDetails = ({
           )}
         </div>
       </div>
+
+      {/* Delete Group Section - Only show if user is creator */}
+      {user && selectedGroupView.created_by === user.id && (
+        <div className={`${darkMode ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'} rounded-xl border p-6`}>
+          <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
+            Danger Zone
+          </h3>
+          <p className={`text-sm mb-4 ${darkMode ? 'text-red-300' : 'text-red-600'}`}>
+            Once you delete a group, there is no going back. All expenses, settlements, and transaction history will be permanently deleted.
+          </p>
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="bg-red-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-red-700 transition-colors"
+          >
+            Delete Group
+          </button>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto`}>
+            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              Delete Group?
+            </h2>
+            
+            <div className="mb-6 space-y-4">
+              <div className={`p-4 rounded-lg ${darkMode ? 'bg-red-900/30 border-red-800' : 'bg-red-50 border-red-200'} border`}>
+                <p className={`font-semibold mb-2 ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
+                  ⚠️ This will permanently delete:
+                </p>
+                <ul className={`text-sm space-y-1 ${darkMode ? 'text-red-300' : 'text-red-600'}`}>
+                  <li>• {groupExpenses.length} expense{groupExpenses.length !== 1 ? 's' : ''}</li>
+                  <li>• {settlements.length} settlement{settlements.length !== 1 ? 's' : ''}</li>
+                  <li>• All transaction history for {selectedGroupView.members.length} member{selectedGroupView.members.length !== 1 ? 's' : ''}</li>
+                </ul>
+              </div>
+
+              {!isLoadingBalances && netBalance !== 0 && (
+                <div className={`p-4 rounded-lg ${darkMode ? 'bg-yellow-900/30 border-yellow-800' : 'bg-yellow-50 border-yellow-200'} border`}>
+                  <p className={`font-semibold mb-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>
+                    💰 Current Balance:
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>
+                    {netBalance > 0 
+                      ? `You are owed ${formatCurrency(netBalance, selectedGroupView.currency || currency)}`
+                      : `You owe ${formatCurrency(Math.abs(netBalance), selectedGroupView.currency || currency)}`
+                    }
+                  </p>
+                  <p className={`text-xs mt-2 ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>
+                    ⚠️ Deleting will erase these balances
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Type the group name to confirm: <span className="font-bold">{selectedGroupView.name}</span>
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="Enter group name"
+                  className={`w-full px-4 py-3 rounded-lg border ${
+                    darkMode 
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                  } focus:outline-none focus:ring-2 focus:ring-red-500`}
+                  disabled={isDeleting}
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }}
+                disabled={isDeleting}
+                className={`flex-1 py-3 px-4 rounded-lg border font-medium transition-colors ${
+                  darkMode
+                    ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                } ${isDeleting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteGroup}
+                disabled={isDeleting || deleteConfirmText !== selectedGroupView.name}
+                className={`flex-1 py-3 px-4 bg-red-600 text-white rounded-lg font-medium transition-colors ${
+                  isDeleting || deleteConfirmText !== selectedGroupView.name
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-red-700'
+                }`}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

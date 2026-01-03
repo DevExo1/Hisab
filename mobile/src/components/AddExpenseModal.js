@@ -11,19 +11,21 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
-  Pressable,
   ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../constants/theme';
+import SelectSplitMembersModal from './SelectSplitMembersModal';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AddExpenseModal({ visible, onClose, onSubmit, group, isDarkMode = false }) {
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   
   const [description, setDescription] = useState('');
@@ -32,22 +34,37 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
   const [splitType, setSplitType] = useState('equal');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [customSplits, setCustomSplits] = useState({});
+  const [showSplitMembersModal, setShowSplitMembersModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   // Get members from group (excluding balances data, just users)
   const members = group?.members || [];
 
-  // Reset form when modal opens
+  // Reset form when modal opens - only on visibility change
   useEffect(() => {
     if (visible && group) {
-      // Select all members by default
-      setSelectedMembers(members.map(m => m.user_id || m.id));
+      // Only reset if modal is newly opened (not already open)
+      // Select all members by default only on initial open
+      if (selectedMembers.length === 0) {
+        setSelectedMembers(members.map(m => m.user_id || m.id));
+      }
+      if (!paidBy) {
+        setPaidBy(user?.id);
+      }
       setCustomSplits({});
-      // Set current user as default payer
-      setPaidBy(user?.id);
     }
-  }, [visible, group, user]);
+  }, [visible]);
+
+  const handleOpenSplitMembers = () => {
+    setShowSplitMembersModal(true);
+  };
+
+  const handleSplitMembersSelected = (members, splits) => {
+    setSelectedMembers(members);
+    setCustomSplits(splits);
+    setShowSplitMembersModal(false);
+  };
 
   const handleSubmit = async () => {
     // Validation
@@ -131,292 +148,275 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
     onClose();
   };
 
-  const toggleMember = (memberId) => {
-    if (selectedMembers.includes(memberId)) {
-      setSelectedMembers(selectedMembers.filter(id => id !== memberId));
-      // Remove custom split if exists
-      const newSplits = { ...customSplits };
-      delete newSplits[memberId];
-      setCustomSplits(newSplits);
-    } else {
-      setSelectedMembers([...selectedMembers, memberId]);
-    }
-  };
 
-  const updateCustomSplit = (memberId, value) => {
-    setCustomSplits({
-      ...customSplits,
-      [memberId]: value
-    });
-  };
 
   if (!group) return null;
 
   return (
     <Modal
       visible={visible}
-      transparent
       animationType="slide"
       onRequestClose={handleClose}
+      presentationStyle="fullScreen"
     >
-      <Pressable style={styles.overlay} onPress={handleClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-        >
-          <Pressable onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalContent, { backgroundColor: theme.surface }, SHADOWS.large]}>
-              {/* Header */}
-              <View style={styles.header}>
-                <View style={styles.headerText}>
-                  <Text style={[styles.title, { color: theme.text }]}>Add Expense</Text>
-                  {group?.name && (
-                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                      to {group.name}
-                    </Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
-                  onPress={handleClose}
-                >
-                  <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
-                </TouchableOpacity>
+      <View style={[styles.modalContainer, { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+            <View style={styles.headerText}>
+              <Text style={[styles.title, { color: theme.text }]}>Add Expense</Text>
+              {group?.name && (
+                <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                  to {group.name}
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
+              onPress={handleClose}
+            >
+              <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView 
+            style={styles.scrollContent}
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Error Message */}
+            {error ? (
+              <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
+                <Text style={[styles.errorText, { color: COLORS.error }]}>⚠️ {error}</Text>
               </View>
+            ) : null}
 
-              <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Error Message */}
-                {error ? (
-                  <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
-                    <Text style={[styles.errorText, { color: COLORS.error }]}>⚠️ {error}</Text>
-                  </View>
-                ) : null}
-
-                {/* Description Input */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>Description</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                    value={description}
-                    onChangeText={(text) => {
-                      setDescription(text);
-                      setError('');
-                    }}
-                    placeholder="e.g., Dinner, Groceries, Uber"
-                    placeholderTextColor={theme.textTertiary}
-                    editable={!isLoading}
-                  />
-                </View>
-
-                {/* Paid By Selection */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>Paid By</Text>
-                  <View style={[styles.pickerContainer, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                    <Picker
-                      selectedValue={paidBy}
-                      onValueChange={(value) => setPaidBy(value)}
-                      style={[styles.picker, { color: theme.text, backgroundColor: 'transparent' }]}
-                      enabled={!isLoading}
-                      dropdownIconColor={theme.textSecondary}
-                      itemStyle={Platform.OS === 'ios' ? { height: 120 } : undefined}
-                    >
-                      {members.length === 0 && (
-                        <Picker.Item label="No members available" value={null} enabled={false} />
-                      )}
-                      {members.map((member) => {
-                        const memberId = member.user_id || member.id;
-                        const memberName = member.user_name || member.name;
-                        const label = memberId === user?.id ? `${memberName} (You)` : memberName;
-                        return (
-                          <Picker.Item 
-                            key={memberId} 
-                            label={label} 
-                            value={memberId}
-                            color={theme.text}
-                          />
-                        );
-                      })}
-                    </Picker>
-                  </View>
-                </View>
-
-                {/* Amount Input */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>Amount ({group.currency || 'USD'})</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                    value={amount}
-                    onChangeText={(text) => {
-                      setAmount(text);
-                      setError('');
-                    }}
-                    placeholder="0.00"
-                    placeholderTextColor={theme.textTertiary}
-                    keyboardType="decimal-pad"
-                    editable={!isLoading}
-                  />
-                </View>
-
-                {/* Split Type */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>Split Type</Text>
-                  <View style={styles.splitTypeButtons}>
-                    {['equal', 'exact', 'percentage'].map((type) => (
-                      <TouchableOpacity
-                        key={type}
-                        style={[
-                          styles.splitTypeButton,
-                          { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
-                          splitType === type && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }
-                        ]}
-                        onPress={() => {
-                          setSplitType(type);
-                          setCustomSplits({});
-                        }}
-                        disabled={isLoading}
-                      >
-                        <Text style={[
-                          styles.splitTypeText,
-                          { color: theme.text },
-                          splitType === type && { color: '#FFFFFF' }
-                        ]}>
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Members Selection */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>
-                    Split Between ({selectedMembers.length} selected)
-                  </Text>
-                  <View style={[styles.membersList, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                    {members.map((member) => {
-                      const memberId = member.user_id || member.id;
-                      const memberName = member.user_name || member.name || 'Unknown';
-                      const isSelected = selectedMembers.includes(memberId);
-                      const isCurrentUser = member.is_current_user;
-                      
-                      return (
-                        <View key={memberId}>
-                          <TouchableOpacity
-                            style={[
-                              styles.memberItem,
-                              { backgroundColor: theme.surfaceSecondary },
-                              isSelected && { borderColor: COLORS.primary, borderWidth: 2 }
-                            ]}
-                            onPress={() => toggleMember(memberId)}
-                            disabled={isLoading}
-                          >
-                            <View style={styles.memberInfo}>
-                              <LinearGradient
-                                colors={isSelected ? [COLORS.primary, COLORS.primaryDark] : [theme.textTertiary, theme.textSecondary]}
-                                style={styles.memberAvatar}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                              >
-                                <Text style={styles.memberAvatarText}>{memberName.charAt(0).toUpperCase()}</Text>
-                              </LinearGradient>
-                              <Text style={[styles.memberName, { color: theme.text }]}>
-                                {memberName}{isCurrentUser ? ' (You)' : ''}
-                              </Text>
-                            </View>
-                            <View style={[
-                              styles.checkbox,
-                              { borderColor: theme.border },
-                              isSelected && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }
-                            ]}>
-                              {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                            </View>
-                          </TouchableOpacity>
-
-                          {/* Custom split input for exact/percentage */}
-                          {isSelected && splitType !== 'equal' && (
-                            <View style={styles.customSplitInput}>
-                              <TextInput
-                                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                                value={customSplits[memberId]?.toString() || ''}
-                                onChangeText={(text) => updateCustomSplit(memberId, text)}
-                                placeholder={splitType === 'percentage' ? '0.00%' : '0.00'}
-                                placeholderTextColor={theme.textTertiary}
-                                keyboardType="decimal-pad"
-                                editable={!isLoading}
-                              />
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              </ScrollView>
-
-              {/* Buttons */}
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.cancelButton, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
-                  onPress={handleClose}
-                  disabled={isLoading}
+            {/* Paid By Selection */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>Paid By</Text>
+              <View style={[styles.pickerContainer, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <Picker
+                  selectedValue={paidBy}
+                  onValueChange={(value) => setPaidBy(value)}
+                  style={[styles.picker, { color: theme.text, backgroundColor: 'transparent' }]}
+                  enabled={!isLoading}
+                  dropdownIconColor={theme.textSecondary}
+                  itemStyle={Platform.OS === 'ios' ? { height: 120 } : undefined}
                 >
-                  <Text style={[styles.cancelButtonText, { color: theme.text }]}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.submitButton, isLoading && styles.disabledButton]}
-                  onPress={handleSubmit}
-                  disabled={isLoading}
-                >
-                  <LinearGradient
-                    colors={isLoading ? [COLORS.primary + '80', COLORS.primaryDark + '80'] : [COLORS.primary, COLORS.primaryDark]}
-                    style={styles.submitButtonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.submitButtonText}>Add Expense</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
+                  {members.length === 0 && (
+                    <Picker.Item label="No members available" value={null} enabled={false} />
+                  )}
+                  {members.map((member) => {
+                    const memberId = member.user_id || member.id;
+                    const memberName = member.user_name || member.name;
+                    const label = memberId === user?.id ? `${memberName} (You)` : memberName;
+                    return (
+                      <Picker.Item 
+                        key={memberId} 
+                        label={label} 
+                        value={memberId}
+                        color={theme.text}
+                      />
+                    );
+                  })}
+                </Picker>
               </View>
             </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+            {/* Description Input */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>Description</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={description}
+                onChangeText={(text) => {
+                  setDescription(text);
+                  setError('');
+                }}
+                placeholder="e.g., Dinner, Groceries, Uber"
+                placeholderTextColor={theme.textTertiary}
+                editable={!isLoading}
+              />
+            </View>
+            {/* Amount Input */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>Amount ({group.currency || 'USD'})</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={amount}
+                onChangeText={(text) => {
+                  setAmount(text);
+                  setError('');
+                }}
+                placeholder="0.00"
+                placeholderTextColor={theme.textTertiary}
+                keyboardType="decimal-pad"
+                editable={!isLoading}
+              />
+            </View>
+
+            {/* Split Type */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>Split Type</Text>
+              <View style={styles.splitTypeButtons}>
+                {['equal', 'exact', 'percentage'].map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.splitTypeButton,
+                      { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
+                      splitType === type && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }
+                    ]}
+                    onPress={() => {
+                      // Set split type and open the modal
+                      setSplitType(type);
+                      handleOpenSplitMembers();
+                    }}
+                    disabled={isLoading || !amount || parseFloat(amount) <= 0}
+                  >
+                    <Text style={[
+                      styles.splitTypeText,
+                      { color: theme.text },
+                      splitType === type && { color: '#FFFFFF' }
+                    ]}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Split Between Section */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>
+                Split Between {selectedMembers.length > 0 && `(${selectedMembers.length} selected)`}
+              </Text>
+
+              {/* Show selected members summary */}
+              {selectedMembers.length > 0 ? (
+                <View style={[styles.selectedSummary, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <Text style={[styles.summaryTitle, { color: theme.textSecondary }]}>
+                    Split: {splitType.charAt(0).toUpperCase() + splitType.slice(1)}
+                  </Text>
+                  {members.filter(m => selectedMembers.includes(m.user_id || m.id)).slice(0, 3).map((member) => {
+                    const memberId = member.user_id || member.id;
+                    const memberName = member.user_name || member.name || 'Unknown';
+                    return (
+                      <View key={memberId} style={styles.summaryItem}>
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.primaryDark]}
+                          style={styles.summaryAvatar}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                        >
+                          <Text style={styles.summaryAvatarText}>{memberName.charAt(0).toUpperCase()}</Text>
+                        </LinearGradient>
+                        <View style={styles.summaryDetails}>
+                          <Text style={[styles.summaryName, { color: theme.text }]} numberOfLines={1}>
+                            {memberName}
+                          </Text>
+                          {splitType !== 'equal' && customSplits[memberId] && (
+                            <Text style={[styles.summaryAmount, { color: theme.textSecondary }]}>
+                              {splitType === 'percentage' ? `${customSplits[memberId]}%` : customSplits[memberId]}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                  {selectedMembers.length > 3 && (
+                    <View style={styles.summaryItem}>
+                      <View style={[styles.summaryAvatar, { backgroundColor: theme.surfaceSecondary }]}>
+                        <Text style={[styles.summaryAvatarText, { color: theme.text }]}>
+                          +{selectedMembers.length - 3}
+                        </Text>
+                      </View>
+                      <Text style={[styles.summaryName, { color: theme.textSecondary }]}>more</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={[styles.emptySelection, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <Text style={[styles.emptySelectionText, { color: theme.textSecondary }]}>
+                    {!amount || parseFloat(amount) <= 0 
+                      ? 'Enter an amount first to select members'
+                      : 'No members selected. Tap "Choose" to split the expense.'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+
+          {/* Buttons - Fixed at bottom with safe area */}
+          <View style={[styles.buttonContainer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+                onPress={handleClose}
+                disabled={isLoading}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.text }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.submitButton, isLoading && styles.disabledButton]}
+                onPress={handleSubmit}
+                disabled={isLoading}
+              >
+                <LinearGradient
+                  colors={isLoading ? [COLORS.primary + '80', COLORS.primaryDark + '80'] : [COLORS.primary, COLORS.primaryDark]}
+                  style={styles.submitButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>Add Expense</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Select Split Members Modal */}
+      <SelectSplitMembersModal
+        visible={showSplitMembersModal}
+        onClose={() => setShowSplitMembersModal(false)}
+        onDone={handleSplitMembersSelected}
+        members={members}
+        splitType={splitType}
+        totalAmount={parseFloat(amount) || 0}
+        initialSelectedMembers={selectedMembers}
+        initialCustomSplits={customSplits}
+        isDarkMode={isDarkMode}
+      />
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
   },
-  keyboardView: {
-    width: '100%',
-  },
-  modalContent: {
-    borderTopLeftRadius: BORDER_RADIUS.xl,
-    borderTopRightRadius: BORDER_RADIUS.xl,
-    padding: SPACING.lg,
-    maxHeight: '90%',
+  container: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.sm,
-    paddingBottom: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
   },
   headerText: {
     flex: 1,
   },
   title: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: FONT_SIZES.xxl,
     fontWeight: FONT_WEIGHTS.bold,
   },
   subtitle: {
@@ -424,8 +424,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeButton: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: BORDER_RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
@@ -435,7 +435,11 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   scrollContent: {
-    maxHeight: 500,
+    flex: 1,
+  },
+  scrollContainer: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
   },
   errorBox: {
     padding: SPACING.md,
@@ -448,20 +452,89 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   formSection: {
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  selectButton: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  selectButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FFFFFF',
+  },
+  selectedSummary: {
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    padding: SPACING.md,
+  },
+  summaryTitle: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+    marginBottom: SPACING.xs,
+    textTransform: 'uppercase',
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  summaryAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: BORDER_RADIUS.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+  },
+  summaryAvatarText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FFFFFF',
+  },
+  summaryDetails: {
+    flex: 1,
+  },
+  summaryName: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  summaryAmount: {
+    fontSize: FONT_SIZES.xs,
+    marginTop: 2,
+  },
+  emptySelection: {
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: SPACING.lg,
+    alignItems: 'center',
+  },
+  emptySelectionText: {
+    fontSize: FONT_SIZES.sm,
+    textAlign: 'center',
   },
   label: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.semibold,
     marginBottom: SPACING.xs,
   },
   input: {
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     fontSize: FONT_SIZES.md,
-    height: 50,
+    minHeight: 50,
   },
   splitTypeButtons: {
     flexDirection: 'row',
@@ -469,19 +542,18 @@ const styles = StyleSheet.create({
   },
   splitTypeButton: {
     flex: 1,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 36,
+    minHeight: 40,
   },
   splitTypeText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
     textAlign: 'center',
-    numberOfLines: 1,
   },
   pickerContainer: {
     borderWidth: 1,
@@ -494,64 +566,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: Platform.OS === 'ios' ? 150 : 50,
   },
-  membersList: {
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    padding: SPACING.xs,
-    maxHeight: 300,
-  },
-  memberItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.xs,
-  },
-  memberInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  memberAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: BORDER_RADIUS.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.sm,
-  },
-  memberAvatarText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: '#FFFFFF',
-  },
-  memberName: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: BORDER_RADIUS.sm,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkmark: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: FONT_WEIGHTS.bold,
-  },
-  customSplitInput: {
-    paddingLeft: SPACING.xl,
-    paddingRight: SPACING.sm,
-    marginBottom: SPACING.xs,
+
+  buttonContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    borderTopWidth: 1,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.sm,
   },
   cancelButton: {
     flex: 1,
@@ -560,32 +584,28 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 44,
   },
   cancelButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
-    numberOfLines: 1,
   },
   submitButton: {
     flex: 1,
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
-    height: 44,
+    minHeight: 48,
   },
   submitButtonGradient: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 44,
+    minHeight: 44,
   },
   submitButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
-    numberOfLines: 1,
   },
   disabledButton: {
     opacity: 0.6,

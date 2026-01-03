@@ -16,13 +16,15 @@ export const FriendCard = ({ friend, darkMode, currency }) => {
         </div>
         <div className="text-right">
           {friend.balance !== 0 && (
-            <div className={`font-bold heading-font text-lg ${friend.balance > 0 ? 'text-gradient-teal' : 'text-gradient-coral'}`}>
-              {friend.balance > 0 ? '+' : ''}{formatCurrency(friend.balance, currency)}
-            </div>
+            <>
+              <div className={`font-bold heading-font text-lg ${friend.balance > 0 ? 'text-gradient-teal' : 'text-gradient-coral'}`}>
+                {friend.balance > 0 ? '+' : ''}{formatCurrency(friend.balance, currency)}
+              </div>
+              <div className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1`}>
+                {friend.balance > 0 ? 'owes you' : 'you owe'}
+              </div>
+            </>
           )}
-          <div className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1`}>
-            {friend.balance === 0 ? 'Settled up' : friend.balance > 0 ? 'owes you' : 'you owe'}
-          </div>
         </div>
       </div>
     </div>

@@ -280,6 +280,17 @@ export const groupAPI = {
   },
 
   /**
+   * Delete a group and all its data (expenses, settlements, etc.)
+   * Only the group creator can delete the group.
+   * @param {number} groupId - Group ID
+   * @returns {Object} - Deletion statistics
+   */
+  deleteGroup: async (groupId) => {
+    const response = await api.delete(`/groups/${groupId}`);
+    return response.data;
+  },
+
+  /**
    * Get settlements for a group
    * @param {number} groupId - Group ID
    */

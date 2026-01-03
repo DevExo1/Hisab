@@ -11,42 +11,43 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
-  Pressable,
   ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { CURRENCIES } from '../utils/currency';
 
-export default function EditGroupModal({ visible, onClose, onSubmit, group, friends = [], isDarkMode = false }) {
+export default function EditGroupModal({ 
+  visible, 
+  onClose, 
+  onSubmit, 
+  group, 
+  friends = [], 
+  isDarkMode = false,
+  selectedMembers = [],
+  onOpenSelectMembers = () => {},
+  initialFormState = { groupName: '', currency: 'USD' }
+}) {
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
+  const insets = useSafeAreaInsets();
   
   const [groupName, setGroupName] = useState('');
   const [currency, setCurrency] = useState('USD');
-  const [selectedFriends, setSelectedFriends] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
-  // Update form when group changes
+  // Update form when modal becomes visible - restore from initialFormState
   useEffect(() => {
-    if (group && visible) {
-      setGroupName(group.name || '');
-      setCurrency(group.currency || 'USD');
-      
-      // Get member IDs from group (excluding current user)
-      const memberIds = group.members
-        ?.filter(m => m.name !== 'You')
-        .map(m => m.id) || [];
-      
-      // Find friends that match these IDs
-      const preselected = friends.filter(f => memberIds.includes(f.id));
-      setSelectedFriends(preselected);
+    if (visible) {
+      setGroupName(initialFormState.groupName || '');
+      setCurrency(initialFormState.currency || 'USD');
     }
-  }, [group, visible, friends]);
+  }, [visible, initialFormState]);
 
   const handleSubmit = async () => {
     if (!groupName.trim()) {
@@ -62,7 +63,7 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
         ...group,
         name: groupName.trim(),
         currency: currency,
-        member_ids: selectedFriends.map(f => f.id),
+        member_ids: selectedMembers.map(f => f.id),
       });
       handleClose();
     } catch (err) {
@@ -74,14 +75,18 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
 
   const handleClose = () => {
     setError('');
+    setShowCurrencyPicker(false);
     onClose();
   };
 
-  const toggleFriend = (friend) => {
-    if (selectedFriends.find(f => f.id === friend.id)) {
-      setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
-    } else {
-      setSelectedFriends([...selectedFriends, friend]);
+
+  const handleOpenMemberSelection = () => {
+    // Pass current form state to parent before switching modals
+    if (onOpenSelectMembers) {
+      onOpenSelectMembers({
+        groupName,
+        currency
+      });
     }
   };
 
@@ -92,181 +97,180 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
   return (
     <Modal
       visible={visible}
-      transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={handleClose}
+      presentationStyle="fullScreen"
     >
-      <View style={styles.overlay}>
+      <View style={[styles.modalContainer, { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
+          style={styles.container}
         >
-          <Pressable style={styles.innerWrapper} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalContent, { backgroundColor: theme.surface }, SHADOWS.large]}>
-              {/* Header */}
-              <View style={styles.header}>
-                <Text style={[styles.title, { color: theme.text }]}>Edit Group</Text>
+          {/* Header */}
+          <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+            <Text style={[styles.title, { color: theme.text }]}>Edit Group</Text>
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
+              onPress={handleClose}
+            >
+              <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.scrollContent}
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Error Message */}
+            {error ? (
+              <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
+                <Text style={[styles.errorText, { color: COLORS.error }]}>⚠️ {error}</Text>
+              </View>
+            ) : null}
+
+            {/* Group Name Input */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>Group Name</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={groupName}
+                onChangeText={(text) => {
+                  setGroupName(text);
+                  setError('');
+                }}
+                placeholder="Enter group name"
+                placeholderTextColor={theme.textTertiary}
+                editable={!isLoading}
+              />
+            </View>
+
+            {/* Currency Selector */}
+            <View style={styles.formSection}>
+              <Text style={[styles.label, { color: theme.text }]}>Currency</Text>
+              <TouchableOpacity
+                style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}
+                disabled={isLoading}
+              >
+                <Text style={[styles.inputText, { color: theme.text }]}>
+                  {selectedCurrency?.code || currency} - {selectedCurrency?.symbol || '$'} ({selectedCurrency?.name || 'Unknown'})
+                </Text>
+              </TouchableOpacity>
+              
+              {showCurrencyPicker && (
+                <View style={[styles.currencyList, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <ScrollView style={styles.currencyScroll} nestedScrollEnabled>
+                    {CURRENCIES.map((curr) => (
+                      <TouchableOpacity
+                        key={curr.code}
+                        style={[
+                          styles.currencyItem,
+                          currency === curr.code && { backgroundColor: theme.surfaceSecondary }
+                        ]}
+                        onPress={() => {
+                          setCurrency(curr.code);
+                          setShowCurrencyPicker(false);
+                        }}
+                      >
+                        <Text style={[styles.currencyText, { color: theme.text }]}>
+                          {curr.code} - {curr.symbol} ({curr.name})
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            {/* Members Selection - Now with a button to open modal */}
+            <View style={styles.formSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.label, { color: theme.text }]}>
+                  Select Members
+                </Text>
                 <TouchableOpacity
-                  style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
-                  onPress={handleClose}
+                  style={[styles.selectButton, { backgroundColor: COLORS.primary }]}
+                  onPress={handleOpenMemberSelection}
+                  disabled={isLoading}
                 >
-                  <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
+                  <Text style={styles.selectButtonText}>
+                    {selectedMembers.length > 0 ? `${selectedMembers.length} Selected` : 'Choose'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
-                style={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContainer}
-                keyboardShouldPersistTaps="handled"
-              >
-                {/* Error Message */}
-                {error ? (
-                  <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
-                    <Text style={[styles.errorText, { color: COLORS.error }]}>⚠️ {error}</Text>
-                  </View>
-                ) : null}
-
-                {/* Group Name Input */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>Group Name</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                    value={groupName}
-                    onChangeText={(text) => {
-                      setGroupName(text);
-                      setError('');
-                    }}
-                    placeholder="Enter group name"
-                    placeholderTextColor={theme.textTertiary}
-                    editable={!isLoading}
-                  />
-                </View>
-
-                {/* Currency Selector */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>Currency</Text>
-                  <TouchableOpacity
-                    style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border }]}
-                    onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}
-                    disabled={isLoading}
-                  >
-                    <Text style={[styles.inputText, { color: theme.text }]}>
-                      {selectedCurrency?.code || currency} - {selectedCurrency?.symbol || '$'} ({selectedCurrency?.name || 'Unknown'})
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {showCurrencyPicker && (
-                    <View style={[styles.currencyList, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                      <ScrollView style={styles.currencyScroll} nestedScrollEnabled>
-                        {CURRENCIES.map((curr) => (
-                          <TouchableOpacity
-                            key={curr.code}
-                            style={[
-                              styles.currencyItem,
-                              currency === curr.code && { backgroundColor: theme.surfaceSecondary }
-                            ]}
-                            onPress={() => {
-                              setCurrency(curr.code);
-                              setShowCurrencyPicker(false);
-                            }}
-                          >
-                            <Text style={[styles.currencyText, { color: theme.text }]}>
-                              {curr.code} - {curr.symbol} ({curr.name})
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
+              {/* Show selected members summary */}
+              {selectedMembers.length > 0 ? (
+                <View style={[styles.selectedSummary, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  {selectedMembers.slice(0, 3).map((friend, index) => (
+                    <View key={friend.id} style={styles.summaryItem}>
+                      <LinearGradient
+                        colors={[COLORS.primary, COLORS.primaryDark]}
+                        style={styles.summaryAvatar}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
+                        <Text style={styles.summaryAvatarText}>{friend.name.charAt(0).toUpperCase()}</Text>
+                      </LinearGradient>
+                      <Text style={[styles.summaryName, { color: theme.text }]} numberOfLines={1}>
+                        {friend.name}
+                      </Text>
+                    </View>
+                  ))}
+                  {selectedMembers.length > 3 && (
+                    <View style={styles.summaryItem}>
+                      <View style={[styles.summaryAvatar, { backgroundColor: theme.surfaceSecondary }]}>
+                        <Text style={[styles.summaryAvatarText, { color: theme.text }]}>
+                          +{selectedMembers.length - 3}
+                        </Text>
+                      </View>
+                      <Text style={[styles.summaryName, { color: theme.textSecondary }]}>more</Text>
                     </View>
                   )}
                 </View>
-
-                {/* Members Selection */}
-                <View style={styles.formSection}>
-                  <Text style={[styles.label, { color: theme.text }]}>
-                    Group Members ({selectedFriends.length} selected)
+              ) : (
+                <View style={[styles.emptySelection, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <Text style={[styles.emptySelectionText, { color: theme.textSecondary }]}>
+                    No members selected. Tap "Choose" to add friends.
                   </Text>
-                  <View style={[styles.membersList, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                    {friends.length === 0 ? (
-                      <View style={styles.emptyFriends}>
-                        <Text style={[styles.emptyFriendsText, { color: theme.textSecondary }]}>
-                          No friends available to add.
-                        </Text>
-                      </View>
-                    ) : (
-                      friends.map((friend) => {
-                        const isSelected = selectedFriends.find(f => f.id === friend.id);
-                        return (
-                          <TouchableOpacity
-                            key={friend.id}
-                            style={[
-                              styles.memberItem,
-                              { backgroundColor: theme.surfaceSecondary },
-                              isSelected && { borderColor: COLORS.primary, borderWidth: 2 }
-                            ]}
-                            onPress={() => toggleFriend(friend)}
-                            disabled={isLoading}
-                          >
-                            <View style={styles.memberInfo}>
-                              <LinearGradient
-                                colors={isSelected ? [COLORS.primary, COLORS.primaryDark] : [theme.textTertiary, theme.textSecondary]}
-                                style={styles.memberAvatar}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                              >
-                                <Text style={styles.memberAvatarText}>{friend.name.charAt(0).toUpperCase()}</Text>
-                              </LinearGradient>
-                              <View style={styles.memberDetails}>
-                                <Text style={[styles.memberName, { color: theme.text }]}>{friend.name}</Text>
-                                <Text style={[styles.memberEmail, { color: theme.textSecondary }]}>{friend.email}</Text>
-                              </View>
-                            </View>
-                            <View style={[
-                              styles.checkbox,
-                              { borderColor: theme.border },
-                              isSelected && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }
-                            ]}>
-                              {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })
-                    )}
-                  </View>
                 </View>
-              </ScrollView>
-
-              {/* Buttons */}
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.cancelButton, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
-                  onPress={handleClose}
-                  disabled={isLoading}
-                >
-                  <Text style={[styles.cancelButtonText, { color: theme.text }]} numberOfLines={1}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.submitButton, isLoading && styles.disabledButton]}
-                  onPress={handleSubmit}
-                  disabled={isLoading}
-                >
-                  <LinearGradient
-                    colors={isLoading ? [COLORS.primary + '80', COLORS.primaryDark + '80'] : [COLORS.primary, COLORS.primaryDark]}
-                    style={styles.submitButtonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.submitButtonText} numberOfLines={1}>Save</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
+              )}
             </View>
-          </Pressable>
+          </ScrollView>
+
+          {/* Buttons - Fixed at bottom with safe area */}
+          <View style={[styles.buttonContainer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+                onPress={handleClose}
+                disabled={isLoading}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.text }]} numberOfLines={1}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.submitButton, isLoading && styles.disabledButton]}
+                onPress={handleSubmit}
+                disabled={isLoading}
+              >
+                <LinearGradient
+                  colors={isLoading ? [COLORS.primary + '80', COLORS.primaryDark + '80'] : [COLORS.primary, COLORS.primaryDark]}
+                  style={styles.submitButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitButtonText} numberOfLines={1}>Save</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -274,40 +278,27 @@ export default function EditGroupModal({ visible, onClose, onSubmit, group, frie
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-start',
-    paddingTop: SPACING.sm,
-  },
-  keyboardView: {
-    width: '100%',
+  modalContainer: {
     flex: 1,
   },
-  innerWrapper: {
+  container: {
     flex: 1,
-  },
-  modalContent: {
-    width: '100%',
-    flex: 1,
-    borderRadius: 0,
-    padding: SPACING.lg,
-    maxHeight: '100%',
-    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
   },
   title: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: FONT_SIZES.xxl,
     fontWeight: FONT_WEIGHTS.bold,
   },
   closeButton: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: BORDER_RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
@@ -320,7 +311,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContainer: {
-    paddingBottom: SPACING.xl * 2,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
   },
   errorBox: {
     padding: SPACING.md,
@@ -333,12 +325,29 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   formSection: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   label: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  selectButton: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  selectButtonText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
-    marginBottom: SPACING.xs,
+    color: '#FFFFFF',
   },
   input: {
     padding: SPACING.md,
@@ -346,6 +355,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     fontSize: FONT_SIZES.md,
     justifyContent: 'center',
+    minHeight: 50,
   },
   inputText: {
     fontSize: FONT_SIZES.md,
@@ -367,85 +377,69 @@ const styles = StyleSheet.create({
   currencyText: {
     fontSize: FONT_SIZES.sm,
   },
-  membersList: {
+  selectedSummary: {
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
-    padding: SPACING.xs,
-    maxHeight: 300,
+    padding: SPACING.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
   },
-  emptyFriends: {
-    padding: SPACING.lg,
-    alignItems: 'center',
-  },
-  emptyFriendsText: {
-    fontSize: FONT_SIZES.sm,
-    textAlign: 'center',
-  },
-  memberItem: {
+  summaryItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.xs,
+    marginRight: SPACING.sm,
+    maxWidth: '45%',
   },
-  memberInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  memberAvatar: {
-    width: 36,
-    height: 36,
+  summaryAvatar: {
+    width: 32,
+    height: 32,
     borderRadius: BORDER_RADIUS.full,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: SPACING.sm,
+    marginRight: SPACING.xs,
   },
-  memberAvatarText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: '#FFFFFF',
-  },
-  memberDetails: {
-    flex: 1,
-  },
-  memberName: {
+  summaryAvatarText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FFFFFF',
   },
-  memberEmail: {
-    fontSize: FONT_SIZES.xs,
-    marginTop: 2,
+  summaryName: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+    flex: 1,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: BORDER_RADIUS.sm,
-    borderWidth: 2,
-    justifyContent: 'center',
+  emptySelection: {
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: SPACING.lg,
     alignItems: 'center',
   },
-  checkmark: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: FONT_WEIGHTS.bold,
+  emptySelectionText: {
+    fontSize: FONT_SIZES.sm,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    borderTopWidth: 1,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.md,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     alignItems: 'center',
   },
   cancelButtonText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.semibold,
   },
   submitButton: {
@@ -454,14 +448,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   submitButtonGradient: {
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 48,
   },
   submitButtonText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
   },
