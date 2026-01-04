@@ -31,7 +31,12 @@ export const Activity = ({ darkMode, currency, activities = [] }) => {
       <div className="space-y-3">
         {activitiesList.length > 0 ? (
           activitiesList.map(activity => (
-            <ActivityItem key={activity.id} activity={activity} darkMode={darkMode} currency={currency} />
+            <ActivityItem 
+              key={activity.id} 
+              activity={activity} 
+              darkMode={darkMode} 
+              currency={activity.groupCurrency || currency} 
+            />
           ))
         ) : (
           <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>

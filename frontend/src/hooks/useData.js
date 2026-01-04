@@ -212,6 +212,7 @@ export const useData = (user, currency) => {
               icon: getExpenseIcon(expense.description),
               group: group.name,
               groupId: group.id,
+              groupCurrency: group.currency || currency, // Add group's currency
               paidByUserId: expense.paid_by_user_id,
               youOwe: youOwe,
               youAreOwed: youAreOwed,

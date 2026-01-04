@@ -11,7 +11,7 @@ import { useData } from '../../contexts/DataContext';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { formatCurrency } from '../../utils/currency';
 
-const ActivityItem = ({ activity, theme, isDarkMode }) => {
+const ActivityItem = ({ activity, theme, isDarkMode, currency = 'USD' }) => {
   const [showDetails, setShowDetails] = useState(false);
 
   const formatDate = (date) => {
@@ -49,7 +49,7 @@ const ActivityItem = ({ activity, theme, isDarkMode }) => {
                 {activity.description}
               </Text>
               <Text style={[styles.amount, { color: '#F97316' }]}>
-                {formatCurrency(activity.amount)}
+                {formatCurrency(activity.amount, currency)}
               </Text>
             </View>
             
@@ -105,7 +105,7 @@ const ActivityItem = ({ activity, theme, isDarkMode }) => {
                           {participant.user_name}
                         </Text>
                         <Text style={[styles.splitAmount, { color: theme.textSecondary }]}>
-                          {formatCurrency(participant.amount)}
+                          {formatCurrency(participant.amount, currency)}
                         </Text>
                       </View>
                     ))}
@@ -135,7 +135,7 @@ const ActivityItem = ({ activity, theme, isDarkMode }) => {
                 Settlement Payment
               </Text>
               <Text style={[styles.amount, { color: '#10B981' }]}>
-                {formatCurrency(activity.amount)}
+                {formatCurrency(activity.amount, currency)}
               </Text>
             </View>
             
@@ -180,7 +180,7 @@ const ActivityItem = ({ activity, theme, isDarkMode }) => {
 
 export default function ActivityScreen() {
   const { isDarkMode } = useTheme();
-  const { activity, activityMetadata, isLoading, refreshData, loadMoreActivity } = useData();
+  const { activity, activityMetadata, isLoading, refreshData, loadMoreActivity, groups } = useData();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -199,9 +199,20 @@ export default function ActivityScreen() {
     setLoadingMore(false);
   };
 
-  const renderItem = ({ item }) => (
-    <ActivityItem activity={item} theme={theme} isDarkMode={isDarkMode} />
-  );
+  const renderItem = ({ item }) => {
+    // Find the group's currency from the activity's group_id
+    const group = groups.find(g => g.id === item.group_id);
+    const currency = group?.currency || 'USD';
+    
+    return (
+      <ActivityItem 
+        activity={item} 
+        theme={theme} 
+        isDarkMode={isDarkMode} 
+        currency={currency}
+      />
+    );
+  };
 
 
 

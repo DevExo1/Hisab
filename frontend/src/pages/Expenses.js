@@ -40,7 +40,12 @@ export const Expenses = ({ darkMode, expenses, currency, setShowAddExpense }) =>
           </div>
         ) : (
           expenses.map(expense => (
-            <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
+            <ExpenseCard 
+              key={expense.id} 
+              expense={expense} 
+              darkMode={darkMode} 
+              currency={expense.groupCurrency || currency} 
+            />
           ))
         )}
       </div>

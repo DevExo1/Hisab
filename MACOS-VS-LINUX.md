@@ -92,7 +92,7 @@ network:
 Apply network config:
 ```bash
 sudo netplan apply
-ip addr show  # verify IP is 10.10.10.131
+ip addr show  # verify IP is 10.10.10.121
 ```
 
 ### Step 3: Install Docker
@@ -132,9 +132,9 @@ docker-compose logs -f
 ```
 
 ### Step 5: Access Application
-- **Frontend**: http://10.10.10.131
-- **Backend**: http://10.10.10.131:8000
-- **API Docs**: http://10.10.10.131:8000/docs
+- **Frontend**: http://10.10.10.121
+- **Backend**: http://10.10.10.121:8000
+- **API Docs**: http://10.10.10.121:8000/docs
 
 ## SSH Access from Windows
 

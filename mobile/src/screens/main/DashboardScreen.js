@@ -218,7 +218,7 @@ export default function DashboardScreen({ navigation }) {
                 key={group.id}
                 group={group}
                 isDarkMode={isDarkMode}
-                currency="USD"
+                currency={group.currency || 'USD'}
                 onPress={() => navigation.navigate('GroupDetails', { groupId: group.id })}
               />
             ))}
@@ -230,22 +230,28 @@ export default function DashboardScreen({ navigation }) {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Expenses</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Expenses')}>
+              <TouchableOpacity onPress={() => navigation.navigate('Activity')}>
                 <Text style={[styles.seeAllButton, { color: COLORS.primary }]}>View all →</Text>
               </TouchableOpacity>
             </View>
             
-            {recentExpenses.map(expense => (
-              <ExpenseCard
-                key={expense.id}
-                expense={expense}
-                isDarkMode={isDarkMode}
-                currency="USD"
-                onPress={() => {
-                  // Navigate to expense details if needed
-                }}
-              />
-            ))}
+            {recentExpenses.map(expense => {
+              // Find the group's currency from the expense's group_id
+              const group = groups.find(g => g.id === expense.group_id);
+              const expenseCurrency = group?.currency || 'USD';
+              
+              return (
+                <ExpenseCard
+                  key={expense.id}
+                  expense={expense}
+                  isDarkMode={isDarkMode}
+                  currency={expenseCurrency}
+                  onPress={() => {
+                    // Navigate to expense details if needed
+                  }}
+                />
+              );
+            })}
           </View>
         ) : (
           <View style={[styles.emptyState, { backgroundColor: theme.surface }]}>
@@ -305,7 +311,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
   },
   appTagline: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: 9,
     marginTop: -2,
   },
   profileButton: {

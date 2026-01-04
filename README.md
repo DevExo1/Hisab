@@ -55,7 +55,6 @@ The product is a web and mobile app that helps small groups (friends, roommates,
 - Push or email notifications for: invited to group, added to expense, mentioned in comments (if implemented). 
 
 
-
 ## 4. Out-of-scope (for MVP)
  
 - Offline sync conflict resolution beyond last-write-wins. 

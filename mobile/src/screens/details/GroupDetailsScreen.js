@@ -27,6 +27,7 @@ import ActivityItem from '../../components/ActivityItem';
 import AddExpenseModal from '../../components/AddExpenseModal';
 import EditGroupModal from '../../components/EditGroupModal';
 import SelectMembersModal from '../../components/SelectMembersModal';
+import SyncStatusIndicator from '../../components/SyncStatusIndicator';
 import apiClient from '../../api/client';
 
 export default function GroupDetailsScreen({ route, navigation }) {
@@ -347,18 +348,7 @@ export default function GroupDetailsScreen({ route, navigation }) {
           </Text>
         </View>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.refreshButton, { backgroundColor: theme.surfaceSecondary }]}
-            onPress={onRefresh}
-            disabled={refreshing}
-          >
-            <Ionicons 
-              name="refresh-sharp" 
-              size={20} 
-              color={refreshing ? theme.textTertiary : theme.text} 
-              style={refreshing ? styles.spinning : null}
-            />
-          </TouchableOpacity>
+          <SyncStatusIndicator isDarkMode={isDarkMode} />
           <TouchableOpacity
             style={[styles.editButton, { backgroundColor: theme.surfaceSecondary }]}
             onPress={() => {
@@ -531,6 +521,7 @@ export default function GroupDetailsScreen({ route, navigation }) {
                 activity={transaction}
                 theme={theme}
                 isDarkMode={isDarkMode}
+                currency={group.currency || 'USD'}
               />
             ))
           ) : (
@@ -689,13 +680,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-  },
-  refreshButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   editButton: {
     width: 36,

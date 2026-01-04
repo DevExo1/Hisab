@@ -52,7 +52,12 @@ export const Dashboard = ({
         </div>
         <div className="space-y-3">
           {expenses.slice(0, 3).map(expense => (
-            <ExpenseCard key={expense.id} expense={expense} darkMode={darkMode} currency={currency} />
+            <ExpenseCard 
+              key={expense.id} 
+              expense={expense} 
+              darkMode={darkMode} 
+              currency={expense.groupCurrency || currency} 
+            />
           ))}
         </div>
       </div>

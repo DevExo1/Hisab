@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import { formatCurrency } from '../utils/currency';
 
-export default function ActivityItem({ activity, theme, isDarkMode }) {
+export default function ActivityItem({ activity, theme, isDarkMode, currency = 'USD' }) {
   const [showDetails, setShowDetails] = useState(false);
 
   const formatDate = (date) => {
@@ -47,7 +47,7 @@ export default function ActivityItem({ activity, theme, isDarkMode }) {
                 {activity.description}
               </Text>
               <Text style={[styles.amount, { color: '#F97316' }]}>
-                {formatCurrency(activity.amount)}
+                {formatCurrency(activity.amount, currency)}
               </Text>
             </View>
             
@@ -103,7 +103,7 @@ export default function ActivityItem({ activity, theme, isDarkMode }) {
                           {participant.user_name}
                         </Text>
                         <Text style={[styles.splitAmount, { color: theme.textSecondary }]}>
-                          {formatCurrency(participant.amount)}
+                          {formatCurrency(participant.amount, currency)}
                         </Text>
                       </View>
                     ))}
@@ -133,7 +133,7 @@ export default function ActivityItem({ activity, theme, isDarkMode }) {
                 Settlement Payment
               </Text>
               <Text style={[styles.amount, { color: '#10B981' }]}>
-                {formatCurrency(activity.amount)}
+                {formatCurrency(activity.amount, currency)}
               </Text>
             </View>
             
