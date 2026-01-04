@@ -20,10 +20,10 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
   const expenseCurrency = currentGroup?.currency || currency;
   const currencySymbol = CURRENCIES.find(c => c.code === expenseCurrency)?.symbol || '$';
 
-  // If we're in a group context, use group members directly (excluding current user)
-  // Group members are User objects with id, name, and email properties
-  const availableFriends = selectedGroup 
-    ? selectedGroup.members
+  // If we're in a group context (either selectedGroup or groupId), use group members
+  // Otherwise, use the user's friends list
+  const availableFriends = currentGroup 
+    ? currentGroup.members
         .filter(member => user ? member.id !== user.id : member.name !== 'You')
         .map(member => ({
           id: member.id,
@@ -32,16 +32,13 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
         }))
     : friends;
 
-  // Initialize selected friends from group members when modal opens
+  // Initialize selected friends when modal opens or group changes
   useEffect(() => {
-    if (isOpen && selectedGroup) {
-
-
-      const groupFriendNames = availableFriends.map(f => f.name);
-
-      setSelectedFriends(groupFriendNames.length > 0 ? [groupFriendNames[0]] : []);
+    if (isOpen) {
+      const friendNames = availableFriends.map(f => f.name);
+      setSelectedFriends(friendNames.length > 0 ? [friendNames[0]] : []);
     }
-  }, [isOpen, selectedGroup]);
+  }, [isOpen, groupId, selectedGroup]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -165,12 +162,6 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
                     value={groupId}
                     onChange={(e) => {
                       setGroupId(e.target.value);
-                      // Reset selected friends when group changes
-                      const newGroup = groups.find(g => g.id === parseInt(e.target.value));
-                      if (newGroup) {
-                        const groupFriends = newGroup.members.filter(member => member !== 'You');
-                        setSelectedFriends(groupFriends.length > 0 ? [groupFriends[0]] : []);
-                      }
                     }}
                     className={`w-full p-3 rounded-lg border ${
                       darkMode
@@ -355,7 +346,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
           {splitType === 'exact' && (
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Exact Amounts
+                Exact Split Amounts ({currencySymbol})
               </label>
               <div className="space-y-2">
                 {getParticipants().map(participant => (
@@ -363,7 +354,6 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
                     <span className={`w-20 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       {participant}:
                     </span>
-                    <span className="text-sm">{currencySymbol}</span>
                     <input
                       type="number"
                       min="0"
@@ -383,21 +373,21 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
             </div>
           )}
 
-          <div className="flex space-x-3 pt-4">
+          <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className={`flex-1 py-3 px-4 rounded-lg border ${
+              className={`px-4 py-2 rounded-lg font-medium ${
                 darkMode
-                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              } font-medium transition-colors`}
+                  ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+              }`}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+              className="px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-lg font-medium"
             >
               Add Expense
             </button>

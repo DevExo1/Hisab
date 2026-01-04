@@ -145,7 +145,18 @@ export const useData = (user, currency) => {
       // Load activity from API
       try {
         const activityData = await activityAPI.getActivity();
-        setActivities(activityData || []);
+        
+        // Map group currency to each activity
+        const activitiesWithCurrency = (activityData?.items || activityData || []).map(activity => {
+          // Find the group for this activity
+          const group = groupsWithBalances.find(g => g.id === activity.group_id);
+          return {
+            ...activity,
+            groupCurrency: group?.currency || currency
+          };
+        });
+        
+        setActivities(activitiesWithCurrency);
       } catch (error) {
         setActivities([]);
       }
