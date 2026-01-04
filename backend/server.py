@@ -923,13 +923,36 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
             user_pair = tuple(sorted([payer_id, payee_id]))
             
             if user_pair in bidirectional:
-                # Determine which direction to reduce
+                # Get current bidirectional balances
+                user1_owes = bidirectional[user_pair]['user1_owes_user2']
+                user2_owes = bidirectional[user_pair]['user2_owes_user1']
+                
+                # Calculate net: positive means user1 owes user2, negative means user2 owes user1
+                net_before = user1_owes - user2_owes
+                
+                # Apply settlement based on who is paying whom
                 if payer_id == user_pair[0]:
-                    # payer is user1, so reduce user1_owes_user2
-                    bidirectional[user_pair]['user1_owes_user2'] -= amount
+                    # user1 is paying user2
+                    # This reduces the net debt from user1 to user2
+                    # If net is positive (user1 owes user2), reduce user1_owes
+                    # If net is negative (user2 owes user1), this is a counter-payment, reduce user2_owes
+                    if net_before >= 0:
+                        # Payment is in direction of debt
+                        bidirectional[user_pair]['user1_owes_user2'] = max(0, user1_owes - amount)
+                    else:
+                        # Payment is against the debt direction (counter-payment)
+                        bidirectional[user_pair]['user2_owes_user1'] = max(0, user2_owes - amount)
                 else:
-                    # payer is user2, so reduce user2_owes_user1
-                    bidirectional[user_pair]['user2_owes_user1'] -= amount
+                    # user2 is paying user1
+                    # This reduces the net debt from user2 to user1
+                    # If net is negative (user2 owes user1), reduce user2_owes
+                    # If net is positive (user1 owes user2), this is a counter-payment, reduce user1_owes
+                    if net_before <= 0:
+                        # Payment is in direction of debt
+                        bidirectional[user_pair]['user2_owes_user1'] = max(0, user2_owes - amount)
+                    else:
+                        # Payment is against the debt direction (counter-payment)
+                        bidirectional[user_pair]['user1_owes_user2'] = max(0, user1_owes - amount)
         
         # Calculate net balances and create pairwise list
         pairwise_list = []
