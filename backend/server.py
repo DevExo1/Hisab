@@ -1022,6 +1022,11 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
         # Sort by amount (highest first)
         pairwise_list.sort(key=lambda x: x['total_amount'], reverse=True)
         
+        # DEBUG: Final result
+        print(f"[DEBUG pairwise] Final pairwise_list count: {len(pairwise_list)}")
+        for p in pairwise_list:
+            print(f"[DEBUG pairwise] Result: {p['from_user_name']} owes {p['to_user_name']}: {p['total_amount']}")
+        
         return {"pairwise_balances": pairwise_list}
         
     except mysql.connector.Error as err:
