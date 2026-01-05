@@ -13,7 +13,7 @@ const DataContext = createContext({});
 
 export const DataProvider = ({ children }) => {
   const { isAuthenticated, logout } = useAuth();
-  const { registerSyncCallback } = useSync();
+  const { registerSyncCallback, registerFullRefreshCallback } = useSync();
   
   const [friends, setFriends] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -43,6 +43,13 @@ export const DataProvider = ({ children }) => {
     const unregister = registerSyncCallback(handleSyncChanges);
     return () => unregister();
   }, [isAuthenticated, registerSyncCallback]);
+
+  // Register full refresh callback for manual sync button
+  useEffect(() => {
+    if (registerFullRefreshCallback) {
+      registerFullRefreshCallback(loadAllData);
+    }
+  }, [registerFullRefreshCallback]);
 
   // Handle incremental sync changes
   const handleSyncChanges = async (changes) => {
@@ -163,13 +170,14 @@ export const DataProvider = ({ children }) => {
         total: activityResponse.total || 0,
         hasMore: activityResponse.has_more || false
       });
+      return true;
     } catch (err) {
       // Handle authentication errors
       if (err.isAuthError) {
         Alert.alert('Session Expired', err.message, [
           { text: 'OK', onPress: () => logout() }
         ]);
-        return;
+        return false;
       }
       
       // Handle network errors
@@ -178,6 +186,7 @@ export const DataProvider = ({ children }) => {
       }
       
       setError(err.message);
+      return false;
     } finally {
       setIsLoading(false);
     }

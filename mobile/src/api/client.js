@@ -41,10 +41,10 @@ class ApiClient {
       if (!response.ok) {
         const errorText = await response.text();
         
-        // Handle 401 Unauthorized - token expired or invalid
+        // Handle 401 Unauthorized - token invalid (expired tokens are now rare with 1-year expiry)
         if (response.status === 401) {
           await this.logout();
-          const error = new Error('Session expired. Please login again.');
+          const error = new Error('Your session is no longer valid. Please login again.');
           error.isAuthError = true;
           throw error;
         }

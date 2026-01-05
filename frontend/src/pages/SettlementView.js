@@ -12,7 +12,15 @@ export const SettlementView = ({
   user,
   onSettlementRecorded
 }) => {
-  const [viewType, setViewType] = useState('simplified'); // 'simplified' or 'detailed'
+  // Determine initial view based on group's locked settlement method
+  const getInitialViewType = () => {
+    if (selectedGroup?.settlement_method) {
+      return selectedGroup.settlement_method;
+    }
+    return 'simplified';
+  };
+  
+  const [viewType, setViewType] = useState(getInitialViewType);
   const [simplifiedSettlements, setSimplifiedSettlements] = useState([]);
   const [pairwiseData, setPairwiseData] = useState([]);
   const [selectedDebt, setSelectedDebt] = useState(null);
@@ -21,9 +29,16 @@ export const SettlementView = ({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastSettlement, setLastSettlement] = useState(null);
   const [unlockedPayments, setUnlockedPayments] = useState(new Set()); // Track unlocked other-user payments
+  
+  // Get the locked settlement method (if any)
+  const lockedMethod = selectedGroup?.settlement_method || null;
 
   useEffect(() => {
     if (selectedGroup) {
+      // Update view type if group has a locked method
+      if (selectedGroup.settlement_method && viewType !== selectedGroup.settlement_method) {
+        setViewType(selectedGroup.settlement_method);
+      }
       loadSettlements();
     }
   }, [selectedGroup, viewType]);
@@ -179,21 +194,43 @@ export const SettlementView = ({
 
       {/* View Type Toggle */}
       <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} rounded-xl border p-6`}>
-        <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-          Choose Settlement Method
+        <h3 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          {lockedMethod ? 'Settlement Method (Locked)' : 'Choose Settlement Method'}
         </h3>
+        
+        {/* Lock Info Banner */}
+        {lockedMethod && (
+          <div className={`mb-4 p-3 rounded-lg ${darkMode ? 'bg-amber-900/30 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+            <p className={`text-sm ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+              🔒 This group is locked to <strong>{lockedMethod}</strong> settlements. 
+              The lock will reset when all debts are settled.
+            </p>
+          </div>
+        )}
+        
         <div className="flex space-x-4">
           <button
-            onClick={() => setViewType('simplified')}
+            onClick={() => !lockedMethod && setViewType('simplified')}
+            disabled={lockedMethod && lockedMethod !== 'simplified'}
             className={`flex-1 p-4 rounded-lg border-2 transition-all ${
               viewType === 'simplified'
                 ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
-                : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                : lockedMethod && lockedMethod !== 'simplified'
+                  ? 'border-slate-300 bg-slate-100 dark:border-slate-700 dark:bg-slate-800 opacity-50 cursor-not-allowed'
+                  : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
             }`}
           >
             <div className="text-center">
-              <div className="text-3xl mb-2">⚡</div>
-              <h4 className={`font-semibold mb-1 ${viewType === 'simplified' ? 'text-teal-600 dark:text-teal-400' : darkMode ? 'text-white' : 'text-slate-900'}`}>
+              <div className="text-3xl mb-2">
+                {lockedMethod === 'simplified' ? '🔒' : lockedMethod === 'detailed' ? '🚫' : '⚡'}
+              </div>
+              <h4 className={`font-semibold mb-1 ${
+                viewType === 'simplified' 
+                  ? 'text-teal-600 dark:text-teal-400' 
+                  : lockedMethod && lockedMethod !== 'simplified'
+                    ? 'text-slate-400 dark:text-slate-500'
+                    : darkMode ? 'text-white' : 'text-slate-900'
+              }`}>
                 Simplified
               </h4>
               <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -202,16 +239,27 @@ export const SettlementView = ({
             </div>
           </button>
           <button
-            onClick={() => setViewType('detailed')}
+            onClick={() => !lockedMethod && setViewType('detailed')}
+            disabled={lockedMethod && lockedMethod !== 'detailed'}
             className={`flex-1 p-4 rounded-lg border-2 transition-all ${
               viewType === 'detailed'
                 ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
-                : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                : lockedMethod && lockedMethod !== 'detailed'
+                  ? 'border-slate-300 bg-slate-100 dark:border-slate-700 dark:bg-slate-800 opacity-50 cursor-not-allowed'
+                  : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
             }`}
           >
             <div className="text-center">
-              <div className="text-3xl mb-2">📊</div>
-              <h4 className={`font-semibold mb-1 ${viewType === 'detailed' ? 'text-teal-600 dark:text-teal-400' : darkMode ? 'text-white' : 'text-slate-900'}`}>
+              <div className="text-3xl mb-2">
+                {lockedMethod === 'detailed' ? '🔒' : lockedMethod === 'simplified' ? '🚫' : '📊'}
+              </div>
+              <h4 className={`font-semibold mb-1 ${
+                viewType === 'detailed' 
+                  ? 'text-teal-600 dark:text-teal-400' 
+                  : lockedMethod && lockedMethod !== 'detailed'
+                    ? 'text-slate-400 dark:text-slate-500'
+                    : darkMode ? 'text-white' : 'text-slate-900'
+              }`}>
                 Detailed
               </h4>
               <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>

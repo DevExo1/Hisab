@@ -35,10 +35,20 @@ export default function SettlementScreen({ route, navigation }) {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unlockedPayments, setUnlockedPayments] = useState(new Set());
+  
+  // Get the locked settlement method from group
+  const lockedMethod = group?.settlement_method || null;
 
   useEffect(() => {
     loadData();
   }, [groupId, viewType]);
+  
+  // Update viewType when group loads with a locked method
+  useEffect(() => {
+    if (group?.settlement_method && viewType !== group.settlement_method) {
+      setViewType(group.settlement_method);
+    }
+  }, [group?.settlement_method]);
 
   const loadData = async () => {
     try {
@@ -119,6 +129,7 @@ export default function SettlementScreen({ route, navigation }) {
         total_amount: settlement.amount || settlement.total_amount,
       },
       settlementType: viewType, // 'simplified' or 'detailed'
+      currency: group?.currency || 'USD', // Pass group currency
     });
   };
 
@@ -148,31 +159,50 @@ export default function SettlementScreen({ route, navigation }) {
       >
         {/* View Type Toggle */}
         <View style={[styles.toggleCard, { backgroundColor: theme.surface }, SHADOWS.medium]}>
-          <Text style={[styles.toggleTitle, { color: theme.text }]}>Settlement Method</Text>
+          <Text style={[styles.toggleTitle, { color: theme.text }]}>
+            {lockedMethod ? 'Settlement Method (Locked)' : 'Settlement Method'}
+          </Text>
+          
+          {/* Lock Info Banner */}
+          {lockedMethod && (
+            <View style={[styles.lockBanner, { 
+              backgroundColor: isDarkMode ? 'rgba(251, 191, 36, 0.15)' : '#FEF3C7',
+              borderColor: isDarkMode ? '#D97706' : '#F59E0B'
+            }]}>
+              <Text style={[styles.lockBannerText, { color: isDarkMode ? '#FCD34D' : '#92400E' }]}>
+                🔒 This group is locked to {lockedMethod} settlements. The lock will reset when all debts are settled.
+              </Text>
+            </View>
+          )}
           
           <View style={styles.toggleButtons}>
             <TouchableOpacity
               style={[
                 styles.toggleButton,
                 { borderColor: theme.border },
-                viewType === 'simplified' && styles.toggleButtonActive
+                viewType === 'simplified' && styles.toggleButtonActive,
+                lockedMethod && lockedMethod !== 'simplified' && styles.toggleButtonDisabled
               ]}
-              onPress={() => setViewType('simplified')}
-              activeOpacity={0.7}
+              onPress={() => !lockedMethod && setViewType('simplified')}
+              activeOpacity={lockedMethod && lockedMethod !== 'simplified' ? 1 : 0.7}
+              disabled={lockedMethod && lockedMethod !== 'simplified'}
             >
               <LinearGradient
                 colors={viewType === 'simplified' ? [COLORS.primary, COLORS.primaryDark] : ['transparent', 'transparent']}
-                style={styles.toggleButtonGradient}
+                style={[
+                  styles.toggleButtonGradient,
+                  lockedMethod && lockedMethod !== 'simplified' && { opacity: 0.4 }
+                ]}
               >
                 <Ionicons 
-                  name="flash-sharp" 
+                  name={lockedMethod === 'simplified' ? 'lock-closed' : lockedMethod === 'detailed' ? 'close-circle' : 'flash-sharp'}
                   size={28} 
-                  color={viewType === 'simplified' ? '#FFFFFF' : theme.text} 
+                  color={viewType === 'simplified' ? '#FFFFFF' : lockedMethod && lockedMethod !== 'simplified' ? theme.textTertiary : theme.text} 
                   style={styles.toggleButtonIcon}
                 />
                 <Text style={[
                   styles.toggleButtonTitle,
-                  { color: viewType === 'simplified' ? '#FFFFFF' : theme.text }
+                  { color: viewType === 'simplified' ? '#FFFFFF' : lockedMethod && lockedMethod !== 'simplified' ? theme.textTertiary : theme.text }
                 ]}>
                   Simplified
                 </Text>
@@ -189,24 +219,29 @@ export default function SettlementScreen({ route, navigation }) {
               style={[
                 styles.toggleButton,
                 { borderColor: theme.border },
-                viewType === 'detailed' && styles.toggleButtonActive
+                viewType === 'detailed' && styles.toggleButtonActive,
+                lockedMethod && lockedMethod !== 'detailed' && styles.toggleButtonDisabled
               ]}
-              onPress={() => setViewType('detailed')}
-              activeOpacity={0.7}
+              onPress={() => !lockedMethod && setViewType('detailed')}
+              activeOpacity={lockedMethod && lockedMethod !== 'detailed' ? 1 : 0.7}
+              disabled={lockedMethod && lockedMethod !== 'detailed'}
             >
               <LinearGradient
                 colors={viewType === 'detailed' ? [COLORS.primary, COLORS.primaryDark] : ['transparent', 'transparent']}
-                style={styles.toggleButtonGradient}
+                style={[
+                  styles.toggleButtonGradient,
+                  lockedMethod && lockedMethod !== 'detailed' && { opacity: 0.4 }
+                ]}
               >
                 <Ionicons 
-                  name="list-sharp" 
+                  name={lockedMethod === 'detailed' ? 'lock-closed' : lockedMethod === 'simplified' ? 'close-circle' : 'list-sharp'}
                   size={28} 
-                  color={viewType === 'detailed' ? '#FFFFFF' : theme.text} 
+                  color={viewType === 'detailed' ? '#FFFFFF' : lockedMethod && lockedMethod !== 'detailed' ? theme.textTertiary : theme.text} 
                   style={styles.toggleButtonIcon}
                 />
                 <Text style={[
                   styles.toggleButtonTitle,
-                  { color: viewType === 'detailed' ? '#FFFFFF' : theme.text }
+                  { color: viewType === 'detailed' ? '#FFFFFF' : lockedMethod && lockedMethod !== 'detailed' ? theme.textTertiary : theme.text }
                 ]}>
                   Detailed
                 </Text>
@@ -416,6 +451,19 @@ const styles = StyleSheet.create({
   },
   toggleButtonSubtitle: {
     fontSize: FONT_SIZES.xs,
+  },
+  toggleButtonDisabled: {
+    opacity: 0.5,
+  },
+  lockBanner: {
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+    borderWidth: 1,
+    marginBottom: SPACING.md,
+  },
+  lockBannerText: {
+    fontSize: FONT_SIZES.xs,
+    textAlign: 'center',
   },
   settlementsCard: {
     borderRadius: BORDER_RADIUS.md,

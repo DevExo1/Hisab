@@ -90,7 +90,7 @@ export const SettleDebtModal = ({ isOpen, onClose, onSubmit, darkMode, debtInfo,
               Settlement Amount
             </label>
             <div className="relative">
-              <span className={`absolute left-3 top-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <span className={`absolute left-4 top-1/2 -translate-y-1/2 text-base font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 {currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency}
               </span>
               <input
@@ -99,7 +99,7 @@ export const SettleDebtModal = ({ isOpen, onClose, onSubmit, darkMode, debtInfo,
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className={`w-full p-3 pl-8 rounded-lg border ${
+                className={`w-full p-3 pl-10 rounded-lg border ${
                   darkMode
                     ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                     : 'bg-white border-gray-300 text-gray-900'

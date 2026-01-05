@@ -22,15 +22,15 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
 export default function LoginScreen({ navigation }) {
-  const { login, biometricLogin, biometricAvailable, biometricLabel, enableBiometricLogin } = useAuth();
+  const { login } = useAuth();
   const { isDarkMode } = useTheme();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [hasInternet, setHasInternet] = useState(true);
+  const [error, setError] = useState('');
   const [checkingConnection, setCheckingConnection] = useState(true);
 
   // Check internet connection on mount and when screen is focused
@@ -84,77 +84,20 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
+    setError(''); // Clear previous errors
     setIsLoading(true);
     const result = await login(email, password);
     setIsLoading(false);
 
-    if (result.success && biometricAvailable) {
-      // Offer to enable biometric login after successful password login
-      Alert.alert(
-        `Enable ${biometricLabel}?`,
-        `You can use ${biometricLabel} to quickly login next time.`,
-        [
-          {
-            text: 'Enable',
-            onPress: async () => {
-              const enableResult = await enableBiometricLogin(email);
-              if (!enableResult.success) {
-                Alert.alert('Error', 'Failed to enable biometric login');
-              }
-            },
-          },
-          { text: 'Later', style: 'cancel' },
-        ]
-      );
+    if (result.success) {
+      // Login successful - no biometric prompt
     } else if (!result.success) {
-      // Check if it's a network error
-      if (result.error && result.error.includes('network')) {
-        Alert.alert(
-          'Connection Error',
-          'Unable to connect to the server. Please check your internet connection.',
-          [
-            { text: 'Retry', onPress: () => handleLogin() },
-            { text: 'Cancel', style: 'cancel' }
-          ]
-        );
-      } else {
-        Alert.alert('Login Failed', result.error || 'Invalid credentials');
-      }
+      const errorMessage = result.error || 'Invalid email or password';
+      setError(errorMessage);
+      // No Alert popup - inline error display is sufficient and follows app design pattern
     }
   };
 
-  const handleBiometricLogin = async () => {
-    if (!hasInternet) {
-      Alert.alert(
-        'No Internet Connection',
-        'Please check your internet connection and try again.',
-        [
-          { text: 'Retry', onPress: () => checkInternetConnection() },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
-      return;
-    }
-
-    setIsBiometricLoading(true);
-    const result = await biometricLogin();
-    setIsBiometricLoading(false);
-
-    if (!result.success) {
-      // Don't show error if user cancelled
-      if (!result.cancelled) {
-        if (result.needsPasswordLogin) {
-          Alert.alert(
-            'Session Expired',
-            result.error || 'Please login with your email and password to continue.',
-            [{ text: 'OK', style: 'cancel' }]
-          );
-        } else {
-          Alert.alert('Biometric Login Failed', result.error || 'Failed to authenticate');
-        }
-      }
-    }
-  };
 
   return (
     <KeyboardAvoidingView
@@ -212,6 +155,15 @@ export default function LoginScreen({ navigation }) {
           </View>
         )}
 
+
+
+
+        {error && (
+          <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
+            <Text style={[styles.errorText, { color: COLORS.error }]}>⚠️ {error}</Text>
+          </View>
+        )}
+
         <View style={styles.form}>
           <TextInput
             style={[styles.input, { 
@@ -226,6 +178,7 @@ export default function LoginScreen({ navigation }) {
             autoCapitalize="none"
             keyboardType="email-address"
           />
+
 
           <TextInput
             style={[styles.input, { 
@@ -243,7 +196,7 @@ export default function LoginScreen({ navigation }) {
           <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
             onPress={handleLogin}
-            disabled={isLoading || isBiometricLoading}
+            disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFF" />
@@ -252,29 +205,6 @@ export default function LoginScreen({ navigation }) {
             )}
           </TouchableOpacity>
 
-          {biometricAvailable && (
-            <TouchableOpacity
-              style={[styles.button, styles.biometricButton, { borderColor: COLORS.primary }]}
-              onPress={handleBiometricLogin}
-              disabled={isBiometricLoading || isLoading}
-            >
-              {isBiometricLoading ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <View style={styles.biometricContent}>
-                  <MaterialCommunityIcons
-                    name="fingerprint"
-                    size={20}
-                    color={COLORS.primary}
-                    style={{ marginRight: SPACING.sm }}
-                  />
-                  <Text style={[styles.biometricButtonText, { color: COLORS.primary }]}>
-                    Login with {biometricLabel}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
 
           <TouchableOpacity
             style={[styles.button, styles.secondaryButton, { borderColor: theme.border }]}
@@ -402,18 +332,14 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
   },
-  biometricButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    marginTop: SPACING.md,
+  errorBox: {
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    marginBottom: SPACING.md,
   },
-  biometricContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  biometricButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
+  errorText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
   },
 });

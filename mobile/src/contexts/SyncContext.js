@@ -176,14 +176,40 @@ export const SyncProvider = ({ children }) => {
     };
   };
   
-  // Manual sync trigger
-  const manualSync = () => {
-    return performSync(false);
+  // Register a callback for full refresh (called on manual sync)
+  const fullRefreshCallbackRef = useRef(null);
+  
+  const registerFullRefreshCallback = (callback) => {
+    fullRefreshCallbackRef.current = callback;
+  };
+  
+  // Manual sync trigger - now also triggers full data refresh
+  const manualSync = async () => {
+    // First do the incremental sync
+    await performSync(false);
+    
+    // Then trigger full data refresh if callback is registered
+    if (fullRefreshCallbackRef.current) {
+      try {
+        await fullRefreshCallbackRef.current();
+      } catch (error) {
+        console.error('Error during full refresh:', error);
+      }
+    }
   };
   
   // Force full sync (ignores lastSyncTime)
-  const fullSync = () => {
-    return performSync(true);
+  const fullSync = async () => {
+    await performSync(true);
+    
+    // Also trigger full data refresh
+    if (fullRefreshCallbackRef.current) {
+      try {
+        await fullRefreshCallbackRef.current();
+      } catch (error) {
+        console.error('Error during full refresh:', error);
+      }
+    }
   };
   
   // Pause sync (useful when user is actively interacting with forms/modals)
@@ -210,6 +236,7 @@ export const SyncProvider = ({ children }) => {
     pauseSync,
     resumeSync,
     registerSyncCallback,
+    registerFullRefreshCallback,
   };
   
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

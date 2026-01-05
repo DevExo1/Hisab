@@ -111,6 +111,14 @@ export default function GroupDetailsScreen({ route, navigation }) {
     loadGroupDetails();
   }, [groupId]);
 
+  // Reload local data when context data changes (e.g., after sync button press)
+  useEffect(() => {
+    // Only reload if we already have initial data (not on first load)
+    if (!isLoading && group) {
+      loadGroupDetails();
+    }
+  }, [allExpenses, groups]);
+
   // Refresh data when screen comes back into focus (e.g., after recording settlement)
   useFocusEffect(
     useCallback(() => {

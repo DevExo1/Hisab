@@ -21,10 +21,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import apiClient from '../../api/client';
-import biometricAuth from '../../utils/biometricAuth';
 
 export default function ProfileScreen() {
-  const { user, logout, biometricAvailable, biometricLabel, disableBiometricLogin } = useAuth();
+  const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
 
@@ -34,19 +33,13 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   useEffect(() => {
     if (user) {
       setName(user.name || user.full_name || '');
     }
-    checkBiometricStatus();
   }, [user]);
 
-  const checkBiometricStatus = async () => {
-    const enabled = await biometricAuth.isBiometricEnabled();
-    setBiometricEnabled(enabled);
-  };
 
   const handleSaveChanges = async () => {
     setError('');
@@ -94,34 +87,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleBiometricToggle = async (value) => {
-    if (value) {
-      // Enable biometric - this should not happen as user enables it during login
-      Alert.alert('Info', 'You can enable biometric login during the next login');
-    } else {
-      // Disable biometric
-      Alert.alert(
-        `Disable ${biometricLabel}?`,
-        `You will no longer be able to use ${biometricLabel} to login.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Disable',
-            style: 'destructive',
-            onPress: async () => {
-              const result = await disableBiometricLogin();
-              if (result.success) {
-                setBiometricEnabled(false);
-                Alert.alert('Success', `${biometricLabel} login has been disabled`);
-              } else {
-                Alert.alert('Error', result.error || 'Failed to disable biometric login');
-              }
-            },
-          },
-        ]
-      );
-    }
-  };
 
   const handleLogout = async () => {
     Alert.alert(
@@ -253,199 +218,131 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Biometric Settings */}
-        {biometricAvailable && (
-          <View style={styles.settingsSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
-            <View style={[styles.settingItem, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.settingItemContent}>
-                <View style={styles.settingItemLeft}>
-                  <MaterialCommunityIcons
-                    name="fingerprint"
-                    size={24}
-                    color={COLORS.primary}
-                    style={{ marginRight: SPACING.md }}
-                  />
-                  <View>
-                    <Text style={[styles.settingText, { color: theme.text }]}>
-                      {biometricLabel}
-                    </Text>
-                    <Text style={[styles.settingSubtext, { color: theme.textSecondary }]}>
-                      {biometricEnabled ? 'Enabled' : 'Disabled'}
-                    </Text>
-                  </View>
-                </View>
-                <Switch
-                  value={biometricEnabled}
-                  onValueChange={handleBiometricToggle}
-                  trackColor={{ false: theme.border, true: COLORS.primary + '50' }}
-                  thumbColor={biometricEnabled ? COLORS.primary : theme.border}
-                />
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* Logout Button */}
         <TouchableOpacity
-          style={[styles.logoutButton, SHADOWS.medium]}
+          style={[styles.logoutButton, { backgroundColor: theme.surface, borderColor: '#EF4444' }]}
           onPress={handleLogout}
         >
-          <Text style={styles.logoutButtonText}>🚪 Logout</Text>
+          <Text style={[styles.logoutButtonText, { color: '#EF4444' }]}>🚪 Logout</Text>
         </TouchableOpacity>
-
-        <View style={styles.bottomSpacer} />
       </View>
     </ScrollView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   content: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
   },
   header: {
     alignItems: 'center',
-    marginVertical: SPACING.lg,
+    marginBottom: SPACING.xl,
   },
   avatarGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: BORDER_RADIUS.full,
-    justifyContent: 'center',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: SPACING.md,
   },
   avatarText: {
     fontSize: FONT_SIZES.xxxl,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: '#FFFFFF',
+    fontWeight: 'bold',
+    color: '#FFF',
   },
   title: {
     fontSize: FONT_SIZES.xxl,
-    fontWeight: FONT_WEIGHTS.bold,
+    fontWeight: 'bold',
   },
   infoBox: {
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.md,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.xl,
   },
   infoLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
     marginBottom: SPACING.xs,
   },
   infoText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
     marginBottom: SPACING.xs,
   },
   infoNote: {
     fontSize: FONT_SIZES.xs,
+    fontStyle: 'italic',
   },
-  errorBox: {
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    marginBottom: SPACING.md,
-  },
-  errorText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
-  },
-  successBox: {
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    marginBottom: SPACING.md,
-  },
-  successText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
-  },
-  formSection: {
-    marginBottom: SPACING.md,
+  form: {
+    marginBottom: SPACING.xl,
   },
   label: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semibold,
-    marginBottom: SPACING.xs,
+    fontWeight: '600',
+    marginBottom: SPACING.sm,
   },
   input: {
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
     fontSize: FONT_SIZES.md,
+    borderWidth: 1,
+    marginBottom: SPACING.md,
+  },
+  pickerContainer: {
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    marginBottom: SPACING.xl,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
   },
   saveButton: {
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
-    marginVertical: SPACING.lg,
+    marginBottom: SPACING.xl,
   },
   saveButtonGradient: {
     padding: SPACING.md,
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
   },
   saveButtonText: {
+    color: '#FFF',
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: '#FFFFFF',
-  },
-  disabledButton: {
-    opacity: 0.6,
+    fontWeight: '600',
   },
   settingsSection: {
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.xl,
   },
   sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: FONT_WEIGHTS.bold,
-    marginBottom: SPACING.sm,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    marginBottom: SPACING.md,
   },
   settingItem: {
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
     borderWidth: 1,
+    marginBottom: SPACING.sm,
   },
   settingText: {
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  settingItemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  settingItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  settingSubtext: {
-    fontSize: FONT_SIZES.sm,
-    marginTop: SPACING.xs,
   },
   logoutButton: {
-    backgroundColor: COLORS.error,
     padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 2,
     alignItems: 'center',
     marginTop: SPACING.lg,
   },
   logoutButtonText: {
-    color: '#FFFFFF',
     fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
-  },
-  bottomSpacer: {
-    height: SPACING.xl,
+    fontWeight: '600',
   },
 });
+

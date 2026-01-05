@@ -20,14 +20,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useData } from '../../contexts/DataContext';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
-import { formatCurrency } from '../../utils/currency';
+import { formatCurrency, getCurrencySymbol } from '../../utils/currency';
 import apiClient from '../../api/client';
 
 export default function SettleDebtScreen({ route, navigation }) {
-  const { groupId, settlement, settlementType = 'simplified' } = route.params;
+  const { groupId, settlement, settlementType = 'simplified', currency = 'USD' } = route.params;
   const { isDarkMode } = useTheme();
   const { refreshData } = useData();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
+  
+  const currencySymbol = getCurrencySymbol(currency);
 
   const [amount, setAmount] = useState(settlement.total_amount.toString());
   const [notes, setNotes] = useState('');
@@ -46,7 +48,7 @@ export default function SettleDebtScreen({ route, navigation }) {
     }
 
     if (amountNum > settlement.total_amount) {
-      setError(`Amount cannot exceed ${formatCurrency(settlement.total_amount)}`);
+      setError(`Amount cannot exceed ${formatCurrency(settlement.total_amount, currency)}`);
       return;
     }
 
@@ -67,7 +69,7 @@ export default function SettleDebtScreen({ route, navigation }) {
       // Show success message
       Alert.alert(
         'Payment Recorded!',
-        `${settlement.from_user_name} paid ${formatCurrency(amountNum)} to ${settlement.to_user_name}${isPartialPayment ? '\n\nPartial payment recorded. Some debt remains.' : ''}`,
+        `${settlement.from_user_name} paid ${formatCurrency(amountNum, currency)} to ${settlement.to_user_name}${isPartialPayment ? '\n\nPartial payment recorded. Some debt remains.' : ''}`,
         [
           {
             text: 'Settle Another',
@@ -114,7 +116,7 @@ export default function SettleDebtScreen({ route, navigation }) {
             <Text style={styles.debtName}>{settlement.to_user_name}</Text>
           </Text>
           <Text style={[styles.debtAmount, { color: COLORS.orange }]}>
-            {formatCurrency(settlement.total_amount)}
+            {formatCurrency(settlement.total_amount, currency)}
           </Text>
         </View>
 
@@ -130,7 +132,7 @@ export default function SettleDebtScreen({ route, navigation }) {
           <Text style={[styles.inputLabel, { color: theme.text }]}>Settlement Amount</Text>
           
           <View style={[styles.amountInputContainer, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}>
-            <Text style={[styles.currencySymbol, { color: theme.textSecondary }]}>$</Text>
+            <Text style={[styles.currencySymbol, { color: theme.textSecondary }]}>{currencySymbol}</Text>
             <TextInput
               style={[styles.amountInput, { color: theme.text }]}
               value={amount}
@@ -182,7 +184,7 @@ export default function SettleDebtScreen({ route, navigation }) {
           <View style={[styles.warningCard, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
             <Ionicons name="bulb-sharp" size={20} color="#F59E0B" style={styles.warningIcon} />
             <Text style={[styles.warningText, { color: '#92400E' }]}>
-              Partial payment: {formatCurrency(settlement.total_amount - amountNum)} will remain owed
+              Partial payment: {formatCurrency(settlement.total_amount - amountNum, currency)} will remain owed
             </Text>
           </View>
         )}

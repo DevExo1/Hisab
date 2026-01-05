@@ -23,7 +23,7 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
           setEmail('');
           setPassword('');
         } else {
-          setError('Invalid credentials. Please try again.');
+          setError('Invalid email or password. Please try again.');
         }
       } else {
         // Handle signup
@@ -35,7 +35,17 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
         setName('');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      console.error('Auth error:', err);
+      // More specific error messages
+      if (err.response?.status === 401) {
+        setError('Invalid email or password.');
+      } else if (err.response?.status === 404) {
+        setError('Account not found. Please sign up.');
+      } else if (err.message?.includes('network') || err.message?.includes('fetch')) {
+        setError('Network error. Please check your connection.');
+      } else {
+        setError(err.response?.data?.detail || err.message || 'An error occurred. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -70,6 +80,20 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
           </div>
         </div>
 
+        {/* Error Message Display */}
+        {error && (
+          <div className={`mb-4 p-4 rounded-lg border ${
+            darkMode 
+              ? 'bg-red-900/20 border-red-700 text-red-300' 
+              : 'bg-red-50 border-red-300 text-red-700'
+          }`}>
+            <div className="flex items-start">
+              <span className="text-lg mr-2">⚠️</span>
+              <p className="text-sm font-medium">{error}</p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
             <div>
@@ -87,6 +111,7 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
                     : 'bg-white border-gray-300 text-gray-900'
                 } focus:ring-2 focus:ring-green-500 focus:border-transparent`}
                 required={!isLogin}
+                disabled={isLoading}
               />
             </div>
           )}
@@ -106,6 +131,7 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
                   : 'bg-white border-gray-300 text-gray-900'
               } focus:ring-2 focus:ring-green-500 focus:border-transparent`}
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -124,21 +150,33 @@ export const LoginModal = ({ isOpen, onClose, darkMode, onLogin }) => {
                   : 'bg-white border-gray-300 text-gray-900'
               } focus:ring-2 focus:ring-green-500 focus:border-transparent`}
               required
+              disabled={isLoading}
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+            disabled={isLoading}
+            className={`w-full py-3 px-4 bg-green-600 text-white rounded-lg font-medium transition-colors ${
+              isLoading 
+                ? 'opacity-50 cursor-not-allowed' 
+                : 'hover:bg-green-700'
+            }`}
           >
-            {isLogin ? 'Login' : 'Create Account'}
+            {isLoading ? 'Loading...' : (isLogin ? 'Login' : 'Create Account')}
           </button>
         </form>
 
         <div className="mt-4 text-center">
           <button
-            onClick={() => setIsLogin(!isLogin)}
-            className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:underline`}
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+            }}
+            disabled={isLoading}
+            className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:underline ${
+              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Login"}
           </button>
