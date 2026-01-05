@@ -236,7 +236,7 @@ def healthcheck():
     Intentionally does not touch the database so it can be used to verify
     basic API reachability from mobile networks.
     """
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2026-01-05-v3-settlement-cycles"}
 
 
 @api_router.post("/token", response_model=Token)
