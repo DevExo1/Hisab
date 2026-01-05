@@ -236,7 +236,7 @@ def healthcheck():
     Intentionally does not touch the database so it can be used to verify
     basic API reachability from mobile networks.
     """
-    return {"status": "ok", "version": "2026-01-05-v3-settlement-cycles"}
+    return {"status": "ok", "version": "2026-01-05-v4-all-settlements"}
 
 
 @api_router.post("/token", response_model=Token)
@@ -791,11 +791,13 @@ def get_group_balances(group_id: int, current_user: User = Depends(get_current_u
         
         balance_data = cursor.fetchall()
         
-        # Apply ONLY 'simplified' type settlements in the current cycle
+        # Apply ALL settlements in the current cycle (both simplified and detailed)
+        # The settlement_type is used for the lock mechanism, not for filtering here
+        # This ensures Group Details shows accurate net balances regardless of settlement method used
         cursor.execute("""
             SELECT payer_id, payee_id, amount
             FROM settlements
-            WHERE group_id = %s AND settlement_type = 'simplified' AND COALESCE(settlement_cycle, 1) = %s
+            WHERE group_id = %s AND COALESCE(settlement_cycle, 1) = %s
         """, (group_id, current_cycle))
         settlements_data = cursor.fetchall()
         
@@ -935,24 +937,26 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
                     'date': row['expense_date'].isoformat() if row['expense_date'] else None
                 })
         
-        # STEP 3: Get ONLY 'detailed' type settlements in current cycle and apply them
+        # STEP 3: Get ALL settlements in current cycle and apply them
+        # The settlement_type is used for the lock mechanism, not for filtering here
+        # This ensures the pairwise view shows accurate balances regardless of settlement method used
         cursor.execute("""
             SELECT payer_id, payee_id, amount
             FROM settlements
-            WHERE group_id = %s AND settlement_type = 'detailed' AND COALESCE(settlement_cycle, 1) = %s
+            WHERE group_id = %s AND COALESCE(settlement_cycle, 1) = %s
         """, (group_id, current_cycle))
-        detailed_settlements = cursor.fetchall()
+        all_settlements = cursor.fetchall()
         
         # DEBUG: Log what we're processing
         print(f"[DEBUG pairwise] Group {group_id}, Cycle {current_cycle}")
         print(f"[DEBUG pairwise] Expenses found: {len(expense_data)}")
         print(f"[DEBUG pairwise] Bidirectional pairs: {list(bidirectional.keys())}")
-        print(f"[DEBUG pairwise] Detailed settlements found: {len(detailed_settlements)}")
-        for s in detailed_settlements:
+        print(f"[DEBUG pairwise] Settlements found: {len(all_settlements)}")
+        for s in all_settlements:
             print(f"[DEBUG pairwise] Settlement: payer={s['payer_id']}, payee={s['payee_id']}, amount={s['amount']}")
         
-        # Apply detailed settlements to pairwise debts
-        for settlement in detailed_settlements:
+        # Apply settlements to pairwise debts
+        for settlement in all_settlements:
             payer_id = settlement['payer_id']  # Person paying
             payee_id = settlement['payee_id']  # Person receiving
             amount = float(settlement['amount'])
