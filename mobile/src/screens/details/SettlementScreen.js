@@ -54,6 +54,9 @@ export default function SettlementScreen({ route, navigation }) {
     try {
       setIsLoading(true);
       
+      // Threshold to ignore tiny rounding errors
+      const BALANCE_THRESHOLD = 0.05;
+      
       // Load group info
       const groups = await apiClient.getGroups();
       const foundGroup = groups.find(g => g.id === groupId);
@@ -64,15 +67,17 @@ export default function SettlementScreen({ route, navigation }) {
         const data = await apiClient.getGroupPairwiseBalances(groupId);
         const balances = data.pairwise_balances || [];
 
-        // Sort: Current user's debts first, then others
-        const sortedBalances = balances.sort((a, b) => {
-          const aIsCurrentUser = a.from_user_id === user?.id;
-          const bIsCurrentUser = b.from_user_id === user?.id;
+        // Filter out tiny amounts and sort: Current user's debts first, then others
+        const sortedBalances = balances
+          .filter(b => b.total_amount >= BALANCE_THRESHOLD)
+          .sort((a, b) => {
+            const aIsCurrentUser = a.from_user_id === user?.id;
+            const bIsCurrentUser = b.from_user_id === user?.id;
 
-          if (aIsCurrentUser && !bIsCurrentUser) return -1;
-          if (!aIsCurrentUser && bIsCurrentUser) return 1;
-          return b.total_amount - a.total_amount;
-        });
+            if (aIsCurrentUser && !bIsCurrentUser) return -1;
+            if (!aIsCurrentUser && bIsCurrentUser) return 1;
+            return b.total_amount - a.total_amount;
+          });
 
         setPairwiseData(sortedBalances);
       } else {
@@ -80,15 +85,17 @@ export default function SettlementScreen({ route, navigation }) {
         const data = await apiClient.getGroupBalances(groupId);
         const settlements = data.settlements || [];
 
-        // Sort: Current user's debts first, then others
-        const sortedSettlements = settlements.sort((a, b) => {
-          const aIsCurrentUser = a.from_user_id === user?.id;
-          const bIsCurrentUser = b.from_user_id === user?.id;
+        // Filter out tiny amounts and sort: Current user's debts first, then others
+        const sortedSettlements = settlements
+          .filter(s => s.amount >= BALANCE_THRESHOLD)
+          .sort((a, b) => {
+            const aIsCurrentUser = a.from_user_id === user?.id;
+            const bIsCurrentUser = b.from_user_id === user?.id;
 
-          if (aIsCurrentUser && !bIsCurrentUser) return -1;
-          if (!aIsCurrentUser && bIsCurrentUser) return 1;
-          return b.amount - a.amount;
-        });
+            if (aIsCurrentUser && !bIsCurrentUser) return -1;
+            if (!aIsCurrentUser && bIsCurrentUser) return 1;
+            return b.amount - a.amount;
+          });
 
         setSimplifiedSettlements(sortedSettlements);
       }

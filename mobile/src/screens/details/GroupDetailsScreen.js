@@ -326,8 +326,11 @@ export default function GroupDetailsScreen({ route, navigation }) {
   const totalExpenses = groupExpenses.reduce((sum, exp) => sum + exp.amount, 0);
   
   // Get current user's balance from the balance data
+  // Apply threshold to ignore tiny rounding errors (< $0.05)
+  const BALANCE_THRESHOLD = 0.05;
   const currentUserBalanceObj = balances?.balances?.find(b => b.user_id === user?.id);
-  const currentUserBalance = currentUserBalanceObj?.balance || 0;
+  const rawBalance = currentUserBalanceObj?.balance || 0;
+  const currentUserBalance = Math.abs(rawBalance) < BALANCE_THRESHOLD ? 0 : rawBalance;
   const youOwe = currentUserBalance < 0 ? Math.abs(currentUserBalance) : 0;
   const youAreOwed = currentUserBalance > 0 ? currentUserBalance : 0;
 
