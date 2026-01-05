@@ -236,7 +236,7 @@ def healthcheck():
     Intentionally does not touch the database so it can be used to verify
     basic API reachability from mobile networks.
     """
-    return {"status": "ok", "version": "2026-01-05-v4-all-settlements"}
+    return {"status": "ok", "version": "2026-01-05-v5-threshold-fix"}
 
 
 @api_router.post("/token", response_model=Token)
@@ -991,7 +991,8 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
             # Net debt between this pair
             net_debt = user1_owes - user2_owes
             
-            if abs(net_debt) < 0.01:
+            # Use 0.05 threshold to match mobile/web rounding tolerance
+            if abs(net_debt) < 0.05:
                 continue  # Balanced, skip
             
             if net_debt > 0:
@@ -1044,10 +1045,12 @@ def calculate_settlements(balances: List[Balance]) -> List[Dict]:
     Calculate simplified settlements using a greedy algorithm.
     Returns a list of suggested payments to settle all debts.
     """
+    # Use 0.05 threshold to match mobile/web rounding tolerance
+    BALANCE_THRESHOLD = 0.05
+    
     # Separate creditors (owed money) and debtors (owe money)
-    # Use >= and <= to include boundary values like 0.01 and -0.01
-    creditors = [(b.user_id, b.user_name, b.balance) for b in balances if b.balance >= 0.01]
-    debtors = [(b.user_id, b.user_name, -b.balance) for b in balances if b.balance <= -0.01]
+    creditors = [(b.user_id, b.user_name, b.balance) for b in balances if b.balance >= BALANCE_THRESHOLD]
+    debtors = [(b.user_id, b.user_name, -b.balance) for b in balances if b.balance <= -BALANCE_THRESHOLD]
     
     settlements = []
     
@@ -1075,10 +1078,10 @@ def calculate_settlements(balances: List[Balance]) -> List[Dict]:
         creditors[i] = (creditor_id, creditor_name, credit_amount - settle_amount)
         debtors[j] = (debtor_id, debtor_name, debt_amount - settle_amount)
         
-        # Move to next creditor or debtor if fully settled (use <= for consistency)
-        if creditors[i][2] <= 0.01:
+        # Move to next creditor or debtor if fully settled
+        if creditors[i][2] < BALANCE_THRESHOLD:
             i += 1
-        if debtors[j][2] <= 0.01:
+        if debtors[j][2] < BALANCE_THRESHOLD:
             j += 1
     
     return settlements
@@ -1190,8 +1193,9 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
             if payee_id in net_balances:
                 net_balances[payee_id] -= amount
         
-        # Check if all settled
-        all_settled = all(abs(net) < 0.01 for net in net_balances.values())
+        # Check if all settled (use 0.05 threshold to match mobile/web rounding tolerance)
+        BALANCE_THRESHOLD = 0.05
+        all_settled = all(abs(net) < BALANCE_THRESHOLD for net in net_balances.values())
         
         if all_settled:
             # Reset the settlement method lock AND increment the cycle
