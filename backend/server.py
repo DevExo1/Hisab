@@ -419,13 +419,18 @@ def create_group(group: GroupCreate, current_user: User = Depends(get_current_us
 @api_router.post("/expenses/", response_model=Expense, status_code=status.HTTP_201_CREATED)
 def create_expense(expense: ExpenseCreate, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
     """Endpoint to add a new expense and split it."""
-    cursor = db_conn.cursor()
+    cursor = db_conn.cursor(dictionary=True)
     try:
-        # 1. Create the main expense record
+        # Get group's current settlement cycle
+        cursor.execute("SELECT settlement_cycle FROM groups WHERE id = %s", (expense.group_id,))
+        group_row = cursor.fetchone()
+        settlement_cycle = group_row['settlement_cycle'] if group_row and group_row.get('settlement_cycle') else 1
+        
+        # 1. Create the main expense record with settlement_cycle
         expense_date = datetime.utcnow()
         cursor.execute(
-            "INSERT INTO expenses (description, amount, paid_by, group_id, expense_date) VALUES (%s, %s, %s, %s, %s)",
-            (expense.description, expense.amount, expense.paid_by_user_id, expense.group_id, expense_date)
+            "INSERT INTO expenses (description, amount, paid_by, group_id, expense_date, settlement_cycle) VALUES (%s, %s, %s, %s, %s, %s)",
+            (expense.description, expense.amount, expense.paid_by_user_id, expense.group_id, expense_date, settlement_cycle)
         )
         expense_id = cursor.lastrowid
 
@@ -734,7 +739,7 @@ def get_group_balances(group_id: int, current_user: User = Depends(get_current_u
     Calculate and return balances for all members in a group.
     
     This is the SIMPLIFIED view - uses greedy algorithm to minimize transactions.
-    Only 'simplified' type settlements are applied to these balances.
+    Only 'simplified' type settlements in the current cycle are applied.
     
     With the settlement method lock feature:
     - If a group uses 'simplified' settlements, only this view matters
@@ -750,14 +755,16 @@ def get_group_balances(group_id: int, current_user: User = Depends(get_current_u
         if cursor.fetchone()['count'] == 0:
             raise HTTPException(status_code=403, detail="Not a member of this group")
         
-        # Get group name
-        cursor.execute("SELECT name FROM groups WHERE id = %s", (group_id,))
+        # Get group name and current settlement cycle
+        cursor.execute("SELECT name, COALESCE(settlement_cycle, 1) as settlement_cycle FROM groups WHERE id = %s", (group_id,))
         group_result = cursor.fetchone()
         if not group_result:
             raise HTTPException(status_code=404, detail="Group not found")
         group_name = group_result['name']
+        current_cycle = group_result['settlement_cycle']
         
         # Calculate balances: what each person paid minus what they owe
+        # ONLY for expenses in the CURRENT settlement cycle
         cursor.execute("""
             SELECT 
                 u.id as user_id,
@@ -769,27 +776,27 @@ def get_group_balances(group_id: int, current_user: User = Depends(get_current_u
             LEFT JOIN (
                 SELECT paid_by as user_id, SUM(amount) as total_paid
                 FROM expenses
-                WHERE group_id = %s
+                WHERE group_id = %s AND COALESCE(settlement_cycle, 1) = %s
                 GROUP BY paid_by
             ) paid ON paid.user_id = u.id
             LEFT JOIN (
                 SELECT es.user_id, SUM(es.amount) as total_owed
                 FROM expense_splits es
                 INNER JOIN expenses e ON es.expense_id = e.id
-                WHERE e.group_id = %s
+                WHERE e.group_id = %s AND COALESCE(e.settlement_cycle, 1) = %s
                 GROUP BY es.user_id
             ) owed ON owed.user_id = u.id
             WHERE gm.group_id = %s AND gm.is_active = TRUE
-        """, (group_id, group_id, group_id, group_id))
+        """, (group_id, group_id, current_cycle, group_id, current_cycle, group_id))
         
         balance_data = cursor.fetchall()
         
-        # Apply ONLY 'simplified' type settlements to adjust balances
+        # Apply ONLY 'simplified' type settlements in the current cycle
         cursor.execute("""
             SELECT payer_id, payee_id, amount
             FROM settlements
-            WHERE group_id = %s AND settlement_type = 'simplified'
-        """, (group_id,))
+            WHERE group_id = %s AND settlement_type = 'simplified' AND COALESCE(settlement_cycle, 1) = %s
+        """, (group_id, current_cycle))
         settlements_data = cursor.fetchall()
         
         # Create balance map
@@ -833,7 +840,7 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
     Get detailed pairwise balances showing who owes whom and from which expenses.
     
     This shows ACTUAL pairwise debts based on who paid for what expense.
-    Only 'detailed' type settlements are applied to reduce these debts.
+    Only expenses and 'detailed' type settlements in the current cycle are considered.
     
     With the settlement method lock feature:
     - If a group uses 'detailed' settlements, only this view matters
@@ -849,7 +856,12 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
         if cursor.fetchone()['count'] == 0:
             raise HTTPException(status_code=403, detail="Not a member of this group")
         
-        # STEP 1: Get all expense data with splits
+        # Get group's current settlement cycle
+        cursor.execute("SELECT COALESCE(settlement_cycle, 1) as settlement_cycle FROM groups WHERE id = %s", (group_id,))
+        group_row = cursor.fetchone()
+        current_cycle = group_row['settlement_cycle'] if group_row else 1
+        
+        # STEP 1: Get all expense data with splits - ONLY for current cycle
         cursor.execute("""
             SELECT 
                 e.id as expense_id,
@@ -865,9 +877,9 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
             INNER JOIN users payer ON e.paid_by = payer.id
             INNER JOIN expense_splits es ON e.id = es.expense_id
             INNER JOIN users ower ON es.user_id = ower.id
-            WHERE e.group_id = %s
+            WHERE e.group_id = %s AND COALESCE(e.settlement_cycle, 1) = %s
             ORDER BY e.expense_date DESC
-        """, (group_id,))
+        """, (group_id, current_cycle))
         
         expense_data = cursor.fetchall()
         
@@ -923,12 +935,12 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
                     'date': row['expense_date'].isoformat() if row['expense_date'] else None
                 })
         
-        # STEP 3: Get ONLY 'detailed' type settlements and apply them
+        # STEP 3: Get ONLY 'detailed' type settlements in current cycle and apply them
         cursor.execute("""
             SELECT payer_id, payee_id, amount
             FROM settlements
-            WHERE group_id = %s AND settlement_type = 'detailed'
-        """, (group_id,))
+            WHERE group_id = %s AND settlement_type = 'detailed' AND COALESCE(settlement_cycle, 1) = %s
+        """, (group_id, current_cycle))
         detailed_settlements = cursor.fetchall()
         
         # Apply detailed settlements to pairwise debts
@@ -1085,12 +1097,13 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
         if settlement_type not in valid_types:
             settlement_type = 'simplified'
         
-        # Check group's settlement method lock
+        # Check group's settlement method lock and get current cycle
         cursor.execute("""
-            SELECT settlement_method FROM groups WHERE id = %s
+            SELECT settlement_method, COALESCE(settlement_cycle, 1) as settlement_cycle FROM groups WHERE id = %s
         """, (settlement.group_id,))
         group_row = cursor.fetchone()
         current_method = group_row['settlement_method'] if group_row else None
+        current_cycle = group_row['settlement_cycle'] if group_row else 1
         
         # Enforce lock if exists
         if current_method and current_method != settlement_type:
@@ -1105,18 +1118,18 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
                 UPDATE groups SET settlement_method = %s WHERE id = %s
             """, (settlement_type, settlement.group_id))
         
-        # Insert settlement (can be partial or full)
+        # Insert settlement with current settlement_cycle
         settlement_date = datetime.utcnow()
         cursor.execute("""
-            INSERT INTO settlements (group_id, payer_id, payee_id, amount, notes, settlement_date, settlement_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO settlements (group_id, payer_id, payee_id, amount, notes, settlement_date, settlement_type, settlement_cycle)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (settlement.group_id, settlement.payer_id, settlement.payee_id, 
-              settlement.amount, settlement.notes, settlement_date, settlement_type))
+              settlement.amount, settlement.notes, settlement_date, settlement_type, current_cycle))
         
         settlement_id = cursor.lastrowid
         
-        # Check if all balances are now zero - if so, reset the lock
-        # Calculate net balances for all group members
+        # Check if all balances are now zero - if so, reset lock and INCREMENT CYCLE
+        # Only consider expenses and settlements in the CURRENT cycle
         cursor.execute("""
             SELECT 
                 u.id as user_id,
@@ -1125,22 +1138,23 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
             INNER JOIN group_members gm ON u.id = gm.user_id AND gm.group_id = %s AND gm.is_active = TRUE
             LEFT JOIN (
                 SELECT paid_by as user_id, SUM(amount) as total_paid
-                FROM expenses WHERE group_id = %s GROUP BY paid_by
+                FROM expenses WHERE group_id = %s AND COALESCE(settlement_cycle, 1) = %s GROUP BY paid_by
             ) paid ON paid.user_id = u.id
             LEFT JOIN (
                 SELECT es.user_id, SUM(es.amount) as total_owed
                 FROM expense_splits es
                 INNER JOIN expenses e ON es.expense_id = e.id
-                WHERE e.group_id = %s GROUP BY es.user_id
+                WHERE e.group_id = %s AND COALESCE(e.settlement_cycle, 1) = %s GROUP BY es.user_id
             ) owed ON owed.user_id = u.id
-        """, (settlement.group_id, settlement.group_id, settlement.group_id))
+        """, (settlement.group_id, settlement.group_id, current_cycle, settlement.group_id, current_cycle))
         
         net_balances = {row['user_id']: float(row['net_before_settlements']) for row in cursor.fetchall()}
         
-        # Apply all settlements to net balances
+        # Apply only current cycle settlements to net balances
         cursor.execute("""
-            SELECT payer_id, payee_id, amount FROM settlements WHERE group_id = %s
-        """, (settlement.group_id,))
+            SELECT payer_id, payee_id, amount FROM settlements 
+            WHERE group_id = %s AND COALESCE(settlement_cycle, 1) = %s
+        """, (settlement.group_id, current_cycle))
         
         for s in cursor.fetchall():
             payer_id, payee_id, amount = s['payer_id'], s['payee_id'], float(s['amount'])
@@ -1153,10 +1167,10 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
         all_settled = all(abs(net) < 0.01 for net in net_balances.values())
         
         if all_settled:
-            # Reset the settlement method lock
+            # Reset the settlement method lock AND increment the cycle
             cursor.execute("""
-                UPDATE groups SET settlement_method = NULL WHERE id = %s
-            """, (settlement.group_id,))
+                UPDATE groups SET settlement_method = NULL, settlement_cycle = %s WHERE id = %s
+            """, (current_cycle + 1, settlement.group_id))
         
         db_conn.commit()
         

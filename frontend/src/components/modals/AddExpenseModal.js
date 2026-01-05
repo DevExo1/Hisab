@@ -6,6 +6,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
   const [amount, setAmount] = useState('');
   const [paidBy, setPaidBy] = useState('You');
   const [splitType, setSplitType] = useState('equal');
+  const [isLoading, setIsLoading] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState(friends.length > 0 ? [friends[0].name] : []);
   const [customSplits, setCustomSplits] = useState({});
   const [groupId, setGroupId] = useState(selectedGroup?.id || '');
@@ -43,6 +44,10 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Prevent double submission
+    if (isLoading) return;
+    setIsLoading(true);
+    
     // For group context, use selectedGroup.id, otherwise use groupId from state
     const effectiveGroupId = selectedGroup?.id || groupId;
     
@@ -56,6 +61,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
         
         if (Math.abs(totalPercentage - 100) > 0.1) {
           alert(`Percentage split must total 100%. Current total: ${totalPercentage.toFixed(1)}%`);
+          setIsLoading(false);
           return;
         }
       }
@@ -69,9 +75,11 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
         
         if (Math.abs(totalAmount - parseFloat(amount)) > 0.01) {
           alert(`Exact split amounts must total ${parseFloat(amount).toFixed(2)}. Current total: ${totalAmount.toFixed(2)}`);
+          setIsLoading(false);
           return;
         }
       }
+      try {
       
       await onSubmit({
         description,
@@ -99,7 +107,14 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
       setCustomSplits({});
       setGroupId(selectedGroup?.id || '');
       onClose();
+      } catch (error) {
+        console.error('Failed to add expense:', error);
+        alert('Failed to add expense. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     } else {
+      setIsLoading(false);
       // Debug: log what's missing
 
     }
@@ -130,7 +145,7 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto`}>
         <div className="flex justify-between items-center mb-6">
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add Expense</h2>
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{isLoading ? 'Adding...' : 'Add Expense'}</h2>
           <button
             onClick={onClose}
             className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
@@ -377,19 +392,25 @@ export const AddExpenseModal = ({ isOpen, onClose, onSubmit, darkMode, friends =
             <button
               type="button"
               onClick={onClose}
+              disabled={isLoading}
               className={`px-4 py-2 rounded-lg font-medium ${
                 darkMode
                   ? 'bg-gray-700 hover:bg-gray-600 text-white'
                   : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-              }`}
+              } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-lg font-medium"
+              disabled={isLoading}
+              className={`px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-lg font-medium ${
+                isLoading 
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : 'hover:from-green-700 hover:to-teal-700'
+              }`}
             >
-              Add Expense
+              {isLoading ? 'Adding...' : 'Add Expense'}
             </button>
           </div>
         </form>

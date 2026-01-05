@@ -99,7 +99,7 @@ export const SettleDebtModal = ({ isOpen, onClose, onSubmit, darkMode, debtInfo,
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className={`w-full p-3 pl-10 rounded-lg border ${
+                className={`w-full p-3 pl-14 rounded-lg border ${
                   darkMode
                     ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                     : 'bg-white border-gray-300 text-gray-900'
