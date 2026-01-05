@@ -235,9 +235,14 @@ class ApiClient {
 
   // Settlements endpoints
   async createSettlement(settlementData) {
+    // Include settlement_type to track source (simplified vs detailed view)
+    const payload = {
+      ...settlementData,
+      settlement_type: settlementData.settlement_type || 'simplified',
+    };
     return this.request('/api/settlements/', {
       method: 'POST',
-      body: JSON.stringify(settlementData),
+      body: JSON.stringify(payload),
     });
   }
 

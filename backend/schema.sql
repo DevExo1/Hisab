@@ -105,6 +105,7 @@ CREATE TABLE settlements (
     amount DECIMAL(10, 2) NOT NULL,
     settlement_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notes TEXT,
+    settlement_type VARCHAR(20) DEFAULT 'simplified',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
     FOREIGN KEY (payer_id) REFERENCES users(id) ON DELETE CASCADE,

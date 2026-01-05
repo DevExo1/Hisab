@@ -24,7 +24,7 @@ import { formatCurrency } from '../../utils/currency';
 import apiClient from '../../api/client';
 
 export default function SettleDebtScreen({ route, navigation }) {
-  const { groupId, settlement } = route.params;
+  const { groupId, settlement, settlementType = 'simplified' } = route.params;
   const { isDarkMode } = useTheme();
   const { refreshData } = useData();
   const theme = isDarkMode ? COLORS.dark : COLORS.light;
@@ -59,6 +59,7 @@ export default function SettleDebtScreen({ route, navigation }) {
         payee_id: settlement.to_user_id,
         amount: amountNum,
         notes: notes.trim() || null,
+        settlement_type: settlementType, // Track whether from simplified or detailed view
       });
 
       await refreshData();

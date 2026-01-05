@@ -169,6 +169,7 @@ class SettlementCreate(BaseModel):
     payee_id: int  # User who is receiving
     amount: float
     notes: Optional[str] = None
+    settlement_type: Optional[str] = 'simplified'  # 'simplified' or 'detailed'
 
 class Settlement(SettlementCreate):
     id: int
@@ -816,7 +817,15 @@ def get_group_balances(group_id: int, current_user: User = Depends(get_current_u
 
 @api_router.get("/groups/{group_id}/pairwise-balances", response_model=Dict[str, Any])
 def get_pairwise_balances(group_id: int, current_user: User = Depends(get_current_user), db_conn = Depends(get_db_connection)):
-    """Get detailed pairwise balances showing who owes whom and from which expenses."""
+    """
+    Get detailed pairwise balances showing who owes whom and from which expenses.
+    
+    This function now uses NET-BALANCE-AWARE calculation to ensure consistency
+    between simplified and detailed views after settlements.
+    
+    Key insight: Simplified settlements affect the overall NET position, not specific
+    pairwise debts. So we calculate final pairwise debts based on remaining NET positions.
+    """
     cursor = db_conn.cursor(dictionary=True)
     try:
         # Check if user is a member
@@ -827,7 +836,69 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
         if cursor.fetchone()['count'] == 0:
             raise HTTPException(status_code=403, detail="Not a member of this group")
         
-        # Get all expenses and their splits for this group
+        # STEP 1: Calculate NET balances per user (same as simplified view)
+        # This gives us the "source of truth" for who actually owes money overall
+        cursor.execute("""
+            SELECT 
+                u.id as user_id,
+                u.full_name as user_name,
+                COALESCE(paid.total_paid, 0) as total_paid,
+                COALESCE(owed.total_owed, 0) as total_owed
+            FROM users u
+            INNER JOIN group_members gm ON u.id = gm.user_id AND gm.group_id = %s AND gm.is_active = TRUE
+            LEFT JOIN (
+                SELECT paid_by as user_id, SUM(amount) as total_paid
+                FROM expenses
+                WHERE group_id = %s
+                GROUP BY paid_by
+            ) paid ON paid.user_id = u.id
+            LEFT JOIN (
+                SELECT es.user_id, SUM(es.amount) as total_owed
+                FROM expense_splits es
+                INNER JOIN expenses e ON es.expense_id = e.id
+                WHERE e.group_id = %s
+                GROUP BY es.user_id
+            ) owed ON owed.user_id = u.id
+            WHERE gm.group_id = %s AND gm.is_active = TRUE
+        """, (group_id, group_id, group_id, group_id))
+        
+        user_data = cursor.fetchall()
+        
+        # Build user info map and initial net balances
+        user_info = {}  # user_id -> {name, net_balance}
+        for row in user_data:
+            net_balance = float(row['total_paid']) - float(row['total_owed'])
+            user_info[row['user_id']] = {
+                'name': row['user_name'],
+                'net_balance': net_balance,  # positive = owed money, negative = owes money
+                'original_net': net_balance
+            }
+        
+        # STEP 2: Apply ALL settlements to net balances
+        cursor.execute("""
+            SELECT payer_id, payee_id, amount
+            FROM settlements
+            WHERE group_id = %s
+        """, (group_id,))
+        all_settlements = cursor.fetchall()
+        
+        for settlement in all_settlements:
+            payer_id = settlement['payer_id']
+            payee_id = settlement['payee_id']
+            amount = float(settlement['amount'])
+            
+            if payer_id in user_info:
+                user_info[payer_id]['net_balance'] += amount  # Payer's position improves
+            if payee_id in user_info:
+                user_info[payee_id]['net_balance'] -= amount  # Payee's position decreases
+        
+        # STEP 3: Check if all nets are settled
+        # If everyone's net is ~0, return empty pairwise list
+        all_settled = all(abs(info['net_balance']) < 0.01 for info in user_info.values())
+        if all_settled:
+            return {"pairwise_balances": []}
+        
+        # STEP 4: Get original pairwise debts from expenses (before any settlements)
         cursor.execute("""
             SELECT 
                 e.id as expense_id,
@@ -849,8 +920,7 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
         
         expense_data = cursor.fetchall()
         
-        # Calculate bidirectional balances first
-        # Structure: {(user_id_1, user_id_2): {'user1_owes_user2': X, 'user2_owes_user1': Y, 'expenses': [...]}}
+        # Build original pairwise structure
         bidirectional = {}
         
         for row in expense_data:
@@ -858,15 +928,12 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
             owes_by = row['owes_user_id']
             amount = float(row['owed_amount'])
             
-            # Skip if same person (they paid for themselves)
             if paid_by == owes_by:
                 continue
             
-            # Create a normalized key (always smaller id first) to group bidirectional debts
             user_pair = tuple(sorted([owes_by, paid_by]))
             
             if user_pair not in bidirectional:
-                # Get names for both users
                 user1_name = row['owes_user_name'] if owes_by == user_pair[0] else row['paid_by_name']
                 user2_name = row['paid_by_name'] if paid_by == user_pair[1] else row['owes_user_name']
                 
@@ -875,15 +942,13 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
                     'user1_name': user1_name,
                     'user2_id': user_pair[1],
                     'user2_name': user2_name,
-                    'user1_owes_user2': 0.0,  # user_pair[0] owes user_pair[1]
-                    'user2_owes_user1': 0.0,  # user_pair[1] owes user_pair[0]
+                    'user1_owes_user2': 0.0,
+                    'user2_owes_user1': 0.0,
                     'expenses_user1_owes_user2': [],
                     'expenses_user2_owes_user1': []
                 }
             
-            # Add to appropriate direction
             if owes_by == user_pair[0] and paid_by == user_pair[1]:
-                # User1 owes User2
                 bidirectional[user_pair]['user1_owes_user2'] += amount
                 bidirectional[user_pair]['expenses_user1_owes_user2'].append({
                     'expense_id': row['expense_id'],
@@ -892,7 +957,6 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
                     'date': row['expense_date'].isoformat() if row['expense_date'] else None
                 })
             else:
-                # User2 owes User1
                 bidirectional[user_pair]['user2_owes_user1'] += amount
                 bidirectional[user_pair]['expenses_user2_owes_user1'].append({
                     'expense_id': row['expense_id'],
@@ -901,97 +965,88 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
                     'date': row['expense_date'].isoformat() if row['expense_date'] else None
                 })
         
-        # Apply settlements to adjust balances
-        cursor.execute("""
-            SELECT s.payer_id, s.payee_id, s.amount,
-                   payer.full_name as payer_name,
-                   payee.full_name as payee_name
-            FROM settlements s
-            INNER JOIN users payer ON s.payer_id = payer.id
-            INNER JOIN users payee ON s.payee_id = payee.id
-            WHERE s.group_id = %s
-        """, (group_id,))
-        settlements = cursor.fetchall()
+        # STEP 5: Scale pairwise debts based on remaining net positions
+        # Key insight: If a user's net debt is partially/fully settled, scale down their pairwise debts proportionally
         
-        # Apply settlements to bidirectional balances
-        for settlement in settlements:
-            payer_id = settlement['payer_id']
-            payee_id = settlement['payee_id']
-            amount = float(settlement['amount'])
-            
-            # Find the user pair
-            user_pair = tuple(sorted([payer_id, payee_id]))
-            
-            if user_pair in bidirectional:
-                # Get current bidirectional balances
-                user1_owes = bidirectional[user_pair]['user1_owes_user2']
-                user2_owes = bidirectional[user_pair]['user2_owes_user1']
-                
-                # Calculate net: positive means user1 owes user2, negative means user2 owes user1
-                net_before = user1_owes - user2_owes
-                
-                # Apply settlement based on who is paying whom
-                if payer_id == user_pair[0]:
-                    # user1 is paying user2
-                    # This reduces the net debt from user1 to user2
-                    # If net is positive (user1 owes user2), reduce user1_owes
-                    # If net is negative (user2 owes user1), this is a counter-payment, reduce user2_owes
-                    if net_before >= 0:
-                        # Payment is in direction of debt
-                        bidirectional[user_pair]['user1_owes_user2'] = max(0, user1_owes - amount)
-                    else:
-                        # Payment is against the debt direction (counter-payment)
-                        bidirectional[user_pair]['user2_owes_user1'] = max(0, user2_owes - amount)
-                else:
-                    # user2 is paying user1
-                    # This reduces the net debt from user2 to user1
-                    # If net is negative (user2 owes user1), reduce user2_owes
-                    # If net is positive (user1 owes user2), this is a counter-payment, reduce user1_owes
-                    if net_before <= 0:
-                        # Payment is in direction of debt
-                        bidirectional[user_pair]['user2_owes_user1'] = max(0, user2_owes - amount)
-                    else:
-                        # Payment is against the debt direction (counter-payment)
-                        bidirectional[user_pair]['user1_owes_user2'] = max(0, user1_owes - amount)
-        
-        # Calculate net balances and create pairwise list
         pairwise_list = []
         
         for user_pair, data in bidirectional.items():
+            user1_id = data['user1_id']
+            user2_id = data['user2_id']
+            
             user1_owes = data['user1_owes_user2']
             user2_owes = data['user2_owes_user1']
-            net_balance = user1_owes - user2_owes
+            original_net = user1_owes - user2_owes
             
-            # Only include if there's a net debt >= 0.01 (consistent threshold)
-            if abs(net_balance) >= 0.01:
-                if net_balance > 0:
-                    # User1 owes User2 (net)
-                    pairwise_list.append({
-                        'from_user_id': data['user1_id'],
-                        'from_user_name': data['user1_name'],
-                        'to_user_id': data['user2_id'],
-                        'to_user_name': data['user2_name'],
-                        'total_amount': net_balance,
-                        'breakdown': {
-                            'owes': user1_owes,
-                            'owed_back': user2_owes
-                        },
-                        'expenses': data['expenses_user1_owes_user2'] + data['expenses_user2_owes_user1']
-                    })
-                else:
-                    # User2 owes User1 (net)
-                    pairwise_list.append({
-                        'from_user_id': data['user2_id'],
-                        'from_user_name': data['user2_name'],
-                        'to_user_id': data['user1_id'],
-                        'to_user_name': data['user1_name'],
-                        'total_amount': abs(net_balance),
-                        'breakdown': {
-                            'owes': user2_owes,
-                            'owed_back': user1_owes
-                        },
-                        'expenses': data['expenses_user2_owes_user1'] + data['expenses_user1_owes_user2']
-                    })
+            if abs(original_net) < 0.01:
+                continue
+            
+            # Determine who is the debtor and creditor in this pair
+            if original_net > 0:
+                debtor_id = user1_id
+                creditor_id = user2_id
+                original_debt = original_net
+                debtor_name = data['user1_name']
+                creditor_name = data['user2_name']
+                expenses = data['expenses_user1_owes_user2'] + data['expenses_user2_owes_user1']
+            else:
+                debtor_id = user2_id
+                creditor_id = user1_id
+                original_debt = abs(original_net)
+                debtor_name = data['user2_name']
+                creditor_name = data['user1_name']
+                expenses = data['expenses_user2_owes_user1'] + data['expenses_user1_owes_user2']
+            
+            # Get current net positions after settlements
+            debtor_current_net = user_info.get(debtor_id, {}).get('net_balance', 0)
+            creditor_current_net = user_info.get(creditor_id, {}).get('net_balance', 0)
+            
+            # If debtor's net is >= 0, they've settled all their debts (including this one)
+            if debtor_current_net >= -0.01:
+                continue  # This debt is effectively settled
+            
+            # If creditor's net is <= 0, they're no longer owed money
+            if creditor_current_net <= 0.01:
+                continue  # Creditor has been paid in full
+            
+            # Calculate the remaining debt for this pair
+            # The debt should be scaled based on how much of the debtor's original total debt remains
+            debtor_original_net = user_info.get(debtor_id, {}).get('original_net', 0)
+            
+            if debtor_original_net >= 0:
+                # Debtor was never in debt, skip
+                continue
+            
+            # Calculate what fraction of debtor's original debt remains
+            remaining_debt_ratio = min(1.0, abs(debtor_current_net) / abs(debtor_original_net))
+            
+            # Also consider creditor's remaining credit
+            creditor_original_net = user_info.get(creditor_id, {}).get('original_net', 0)
+            if creditor_original_net <= 0:
+                continue
+            
+            remaining_credit_ratio = min(1.0, creditor_current_net / creditor_original_net)
+            
+            # The final debt is scaled by the minimum of both ratios
+            # This ensures we don't show more debt than either party actually has
+            scale_factor = min(remaining_debt_ratio, remaining_credit_ratio)
+            scaled_debt = original_debt * scale_factor
+            
+            if scaled_debt >= 0.01:
+                pairwise_list.append({
+                    'from_user_id': debtor_id,
+                    'from_user_name': debtor_name,
+                    'to_user_id': creditor_id,
+                    'to_user_name': creditor_name,
+                    'total_amount': round(scaled_debt, 2),
+                    'breakdown': {
+                        'original_debt': round(original_debt, 2),
+                        'scale_factor': round(scale_factor, 4),
+                        'owes': round(user1_owes if original_net > 0 else user2_owes, 2),
+                        'owed_back': round(user2_owes if original_net > 0 else user1_owes, 2)
+                    },
+                    'expenses': expenses
+                })
         
         # Sort by amount (highest first)
         pairwise_list.sort(key=lambda x: x['total_amount'], reverse=True)
@@ -1077,13 +1132,19 @@ def record_settlement(settlement: SettlementCreate, current_user: User = Depends
         if settlement.amount <= 0:
             raise HTTPException(status_code=400, detail="Settlement amount must be positive")
         
+        # Validate settlement_type
+        valid_types = ['simplified', 'detailed']
+        settlement_type = settlement.settlement_type or 'simplified'
+        if settlement_type not in valid_types:
+            settlement_type = 'simplified'
+        
         # Insert settlement (can be partial or full)
         settlement_date = datetime.utcnow()
         cursor.execute("""
-            INSERT INTO settlements (group_id, payer_id, payee_id, amount, notes, settlement_date)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO settlements (group_id, payer_id, payee_id, amount, notes, settlement_date, settlement_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (settlement.group_id, settlement.payer_id, settlement.payee_id, 
-              settlement.amount, settlement.notes, settlement_date))
+              settlement.amount, settlement.notes, settlement_date, settlement_type))
         
         settlement_id = cursor.lastrowid
         db_conn.commit()
@@ -1114,7 +1175,8 @@ def get_group_settlements(group_id: int, current_user: User = Depends(get_curren
         
         # Get settlements
         cursor.execute("""
-            SELECT id, group_id, payer_id, payee_id, amount, notes, settlement_date
+            SELECT id, group_id, payer_id, payee_id, amount, notes, settlement_date,
+                   COALESCE(settlement_type, 'simplified') as settlement_type
             FROM settlements
             WHERE group_id = %s
             ORDER BY settlement_date DESC

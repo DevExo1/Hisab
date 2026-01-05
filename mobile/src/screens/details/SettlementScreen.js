@@ -108,7 +108,7 @@ export default function SettlementScreen({ route, navigation }) {
       return;
     }
 
-    // Navigate to settle debt modal/screen
+    // Navigate to settle debt modal/screen with settlement_type
     navigation.navigate('SettleDebt', {
       groupId,
       settlement: {
@@ -118,6 +118,7 @@ export default function SettlementScreen({ route, navigation }) {
         to_user_name: settlement.to_user_name,
         total_amount: settlement.amount || settlement.total_amount,
       },
+      settlementType: viewType, // 'simplified' or 'detailed'
     });
   };
 

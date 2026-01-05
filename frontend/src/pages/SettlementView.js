@@ -111,7 +111,8 @@ export const SettlementView = ({
         payerId: selectedDebt.from_user_id,
         payeeId: selectedDebt.to_user_id,
         amount: settlementData.amount,
-        notes: settlementData.notes
+        notes: settlementData.notes,
+        settlementType: viewType // Track whether from simplified or detailed view
       });
 
       setLastSettlement({

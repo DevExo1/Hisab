@@ -347,6 +347,7 @@ export const settlementAPI = {
       payee_id: settlementData.payeeId,
       amount: parseFloat(settlementData.amount),
       notes: settlementData.notes || null,
+      settlement_type: settlementData.settlementType || 'simplified', // Track source view
     });
     return response.data;
   },
