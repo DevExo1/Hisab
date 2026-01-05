@@ -943,6 +943,14 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
         """, (group_id, current_cycle))
         detailed_settlements = cursor.fetchall()
         
+        # DEBUG: Log what we're processing
+        print(f"[DEBUG pairwise] Group {group_id}, Cycle {current_cycle}")
+        print(f"[DEBUG pairwise] Expenses found: {len(expense_data)}")
+        print(f"[DEBUG pairwise] Bidirectional pairs: {list(bidirectional.keys())}")
+        print(f"[DEBUG pairwise] Detailed settlements found: {len(detailed_settlements)}")
+        for s in detailed_settlements:
+            print(f"[DEBUG pairwise] Settlement: payer={s['payer_id']}, payee={s['payee_id']}, amount={s['amount']}")
+        
         # Apply detailed settlements to pairwise debts
         for settlement in detailed_settlements:
             payer_id = settlement['payer_id']  # Person paying
@@ -951,13 +959,23 @@ def get_pairwise_balances(group_id: int, current_user: User = Depends(get_curren
             
             user_pair = tuple(sorted([payer_id, payee_id]))
             
+            print(f"[DEBUG pairwise] Processing settlement: user_pair={user_pair}, payer={payer_id}, payee={payee_id}")
+            print(f"[DEBUG pairwise] Pair in bidirectional: {user_pair in bidirectional}")
+            
             if user_pair in bidirectional:
                 data = bidirectional[user_pair]
+                print(f"[DEBUG pairwise] BEFORE: user1_owes_user2={data['user1_owes_user2']}, user2_owes_user1={data['user2_owes_user1']}")
+                print(f"[DEBUG pairwise] user1_id={data['user1_id']}, user2_id={data['user2_id']}")
                 # Reduce the debt where payer owes payee
                 if payer_id == data['user1_id'] and payee_id == data['user2_id']:
                     data['user1_owes_user2'] = max(0, data['user1_owes_user2'] - amount)
+                    print(f"[DEBUG pairwise] Reduced user1_owes_user2 by {amount}")
                 elif payer_id == data['user2_id'] and payee_id == data['user1_id']:
                     data['user2_owes_user1'] = max(0, data['user2_owes_user1'] - amount)
+                    print(f"[DEBUG pairwise] Reduced user2_owes_user1 by {amount}")
+                else:
+                    print(f"[DEBUG pairwise] NO MATCH - settlement direction doesn't match debt direction!")
+                print(f"[DEBUG pairwise] AFTER: user1_owes_user2={data['user1_owes_user2']}, user2_owes_user1={data['user2_owes_user1']}")
         
         # STEP 4: Calculate net pairwise balances and build result
         pairwise_list = []
