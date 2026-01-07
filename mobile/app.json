@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hisab - Group Accounts Manager",
     "slug": "hisab",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.exolutus.hisab"
+      "bundleIdentifier": "com.exolutus.hisab",
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {

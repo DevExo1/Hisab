@@ -159,32 +159,38 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
       onRequestClose={handleClose}
       presentationStyle="fullScreen"
     >
-      <View style={[styles.modalContainer, { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-            <View style={styles.headerText}>
-              <Text style={[styles.title, { color: theme.text }]}>Add Expense</Text>
-              {group?.name && (
-                <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                  to {group.name}
-                </Text>
-              )}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <View style={styles.container}>
+            {/* Header */}
+            <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+              <View style={styles.headerText}>
+                <Text style={[styles.title, { color: theme.text }]}>Add Expense</Text>
+                {group?.name && (
+                  <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                    to {group.name}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
+                onPress={handleClose}
+              >
+                <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.closeButton, { backgroundColor: theme.surfaceSecondary }]}
-              onPress={handleClose}
-            >
-              <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
-            </TouchableOpacity>
-          </View>
 
-          <ScrollView 
-            style={styles.scrollContent}
-            contentContainerStyle={styles.scrollContainer}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
+            <ScrollView 
+              style={styles.scrollContent}
+              contentContainerStyle={styles.scrollContainer}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
             {/* Error Message */}
             {error ? (
               <View style={[styles.errorBox, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
@@ -380,6 +386,7 @@ export default function AddExpenseModal({ visible, onClose, onSubmit, group, isD
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Select Split Members Modal */}
       <SelectSplitMembersModal
@@ -439,7 +446,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: SPACING.lg,
-    paddingBottom: SPACING.xl,
+    paddingBottom: SPACING.xl * 4, // Extra padding so content scrolls above keyboard
   },
   errorBox: {
     padding: SPACING.md,

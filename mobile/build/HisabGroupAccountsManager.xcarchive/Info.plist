@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ApplicationProperties</key>
+	<dict>
+		<key>ApplicationPath</key>
+		<string>Applications/HisabGroupAccountsManager.app</string>
+		<key>Architectures</key>
+		<array>
+			<string>arm64</string>
+		</array>
+		<key>CFBundleIdentifier</key>
+		<string>com.exolutus.hisab</string>
+		<key>CFBundleShortVersionString</key>
+		<string>1.1.0</string>
+		<key>CFBundleVersion</key>
+		<string>2</string>
+		<key>SigningIdentity</key>
+		<string>Apple Development: rajan maharjan (VNRYAF2NBB)</string>
+		<key>Team</key>
+		<string>TZPSL746NL</string>
+	</dict>
+	<key>ArchiveVersion</key>
+	<integer>2</integer>
+	<key>CreationDate</key>
+	<date>2026-01-07T17:41:40Z</date>
+	<key>Name</key>
+	<string>HisabGroupAccountsManager</string>
+	<key>SchemeName</key>
+	<string>HisabGroupAccountsManager</string>
+</dict>
+</plist>
